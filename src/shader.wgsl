@@ -1,9 +1,10 @@
 struct Params {
-    // Demi-étendue du quad en coordonnées normalisées (1.0 = bord de la fenêtre).
-    scale: vec2<f32>,
+    // Rectangle de destination en coordonnées normalisées : (gauche, haut, droite, bas).
+    dst: vec4<f32>,
+    // Rectangle source dans l'image *orientée*, en [0, 1] : (gauche, haut, droite, bas).
+    src: vec4<f32>,
     // Orientation EXIF (1 à 8).
     orientation: u32,
-    _pad: u32,
 };
 
 @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -20,15 +21,11 @@ struct VsOut {
 fn vs_main(@builtin(vertex_index) i: u32) -> VsOut {
     let c = vec2<f32>(f32(i & 1u), f32(i >> 1u));
     var out: VsOut;
-    out.pos = vec4<f32>(
-        (c.x * 2.0 - 1.0) * params.scale.x,
-        (1.0 - c.y * 2.0) * params.scale.y,
-        0.0,
-        1.0,
-    );
-    // Coordonnée affichée -> coordonnée dans l'image stockée.
-    let u = c.x;
-    let v = c.y;
+    out.pos = vec4<f32>(mix(params.dst.xy, params.dst.zw, c), 0.0, 1.0);
+    // Coordonnée dans l'image orientée -> coordonnée dans l'image stockée.
+    let d = mix(params.src.xy, params.src.zw, c);
+    let u = d.x;
+    let v = d.y;
     switch params.orientation {
         case 2u: { out.uv = vec2<f32>(1.0 - u, v); }
         case 3u: { out.uv = vec2<f32>(1.0 - u, 1.0 - v); }
