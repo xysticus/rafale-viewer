@@ -35,6 +35,21 @@ struct Burst {
     len: usize,
 }
 
+/// Géométrie de l'ascenseur de la liste, en pixels écran.
+#[derive(Clone, Copy)]
+struct Scrollbar {
+    track: Rect,
+    thumb: Rect,
+    /// Première ligne pour un décalage nul (rafale courante au premier tiers).
+    anchor: isize,
+    /// Indice maximal de la première ligne affichée.
+    last_first: isize,
+}
+
+/// Largeur de l'ascenseur et marge de tolérance au clic de part et d'autre.
+const SCROLLBAR_WIDTH: f32 = 6.0;
+const SCROLLBAR_GRAB: f32 = 8.0;
+
 struct App {
     dir: PathBuf,
     files: Arc<Vec<PathBuf>>,
@@ -81,6 +96,9 @@ struct App {
     /// Zones cliquables de la liste : (début de rafale, haut, bas), relatives à la liste.
     list_hits: Vec<(usize, f32, f32)>,
     list_track: Option<(f32, f32, f32)>,
+    scrollbar: Option<Scrollbar>,
+    /// Glissement de l'ascenseur en cours : décalage du pointeur dans le curseur.
+    dragging: Option<f32>,
 
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
@@ -132,6 +150,8 @@ impl App {
             list_key: String::new(),
             list_hits: Vec::new(),
             list_track: None,
+            scrollbar: None,
+            dragging: None,
             window: None,
             renderer: None,
         }
@@ -470,11 +490,57 @@ impl App {
                 h: 3.0,
             }
         });
-        if renderer.set_marker(marker) {
+        // Ascenseur, seulement si toutes les rafales ne tiennent pas.
+        let total = self.bursts.len() as f32;
+        self.scrollbar = (fit > 0 && self.bursts.len() > fit as usize).then(|| {
+            let top = ly + header;
+            let h = fit as f32 * Panel::row_height(width);
+            let x = lx + width as f32 - panel::PADDING / 2.0 + 2.0;
+            let thumb_h = (h * fit as f32 / total).max(24.0);
+            let thumb_y = top + (h - thumb_h) * first as f32 / (total - fit as f32);
+            Scrollbar {
+                track: Rect { x, y: top, w: SCROLLBAR_WIDTH, h },
+                thumb: Rect { x, y: thumb_y, w: SCROLLBAR_WIDTH, h: thumb_h },
+                anchor,
+                last_first,
+            }
+        });
+        let changed = renderer.set_marker(marker)
+            | renderer.set_scrollbar(self.scrollbar.map(|s| (s.track, s.thumb)));
+        if changed {
             if let Some(w) = &self.window {
                 w.request_redraw();
             }
         }
+    }
+
+    /// Appui sur l'ascenseur : commence le glissement (un clic sur la piste y amène le curseur).
+    fn press_scrollbar(&mut self) -> bool {
+        let (Some((cx, cy)), Some(s)) = (self.cursor, self.scrollbar) else {
+            return false;
+        };
+        let t = s.track;
+        if cx < t.x - SCROLLBAR_GRAB || cx > t.x + t.w + SCROLLBAR_GRAB || cy < t.y || cy > t.y + t.h {
+            return false;
+        }
+        let grab = if (s.thumb.y..s.thumb.y + s.thumb.h).contains(&cy) {
+            cy - s.thumb.y
+        } else {
+            s.thumb.h / 2.0
+        };
+        self.dragging = Some(grab);
+        self.drag_scrollbar();
+        true
+    }
+
+    fn drag_scrollbar(&mut self) {
+        let (Some(grab), Some((_, cy)), Some(s)) = (self.dragging, self.cursor, self.scrollbar) else {
+            return;
+        };
+        let range = (s.track.h - s.thumb.h).max(1.0);
+        let frac = ((cy - grab - s.track.y) / range).clamp(0.0, 1.0);
+        let first = (frac * s.last_first as f32).round() as isize;
+        self.list_offset = first - s.anchor;
     }
 
     /// Clic dans la liste : positionne la vue au début de la rafale.
@@ -648,6 +714,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = Some((position.x as f32, position.y as f32));
+                self.drag_scrollbar();
                 if self.loupe_allowed {
                     if let Some(w) = &self.window {
                         w.request_redraw();
@@ -655,10 +722,16 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput {
-                state: ElementState::Pressed,
+                state,
                 button: MouseButton::Left,
                 ..
-            } => self.click(),
+            } => {
+                if state == ElementState::Released {
+                    self.dragging = None;
+                } else if !self.press_scrollbar() {
+                    self.click();
+                }
+            }
             WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
             WindowEvent::CursorLeft { .. } => {
                 self.cursor = None;
