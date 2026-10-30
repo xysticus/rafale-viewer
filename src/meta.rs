@@ -22,6 +22,12 @@ pub struct Meta {
     pub clock: String,
     /// Mode d'entraînement et numéro de vue dans la rafale (0 = vue unique).
     pub drive: Option<(u16, u16)>,
+    /// « 1/500 s   f/4   ISO 12800 ».
+    pub exposure: String,
+    /// Mode image (PictureMode OM System / Olympus).
+    pub picture_mode: Option<String>,
+    /// Filtre de bruit (NoiseFilter OM System / Olympus).
+    pub noise_filter: Option<&'static str>,
     /// Vignette EXIF, encore compressée en JPEG.
     pub thumb: Option<Vec<u8>>,
     pub orientation: u8,
@@ -48,6 +54,9 @@ pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, proxy: EventLo
                         time: None,
                         clock: String::new(),
                         drive: None,
+                        exposure: String::new(),
+                        picture_mode: None,
+                        noise_filter: None,
                         thumb: None,
                         orientation: 1,
                     }
@@ -88,12 +97,14 @@ fn read_meta(path: &std::path::Path) -> Option<Meta> {
             )
         })
         .unwrap_or((None, String::new()));
-    let drive = exif
+    let olympus = exif
         .get_field(exif::Tag::MakerNote, exif::In::PRIMARY)
         .and_then(|f| match &f.value {
-            exif::Value::Undefined(mn, _) => olympus_drive_mode(mn),
+            exif::Value::Undefined(mn, _) => olympus_settings(mn),
             _ => None,
-        });
+        })
+        .unwrap_or_default();
+    let exposure = exposure(&exif);
     let thumb = (|| {
         let off = exif
             .get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL)?
@@ -114,7 +125,10 @@ fn read_meta(path: &std::path::Path) -> Option<Meta> {
     Some(Meta {
         time,
         clock,
-        drive,
+        drive: olympus.drive,
+        exposure,
+        picture_mode: olympus.picture_mode,
+        noise_filter: olympus.noise_filter,
         thumb,
         orientation,
     })
@@ -132,10 +146,43 @@ fn read_exif(path: &std::path::Path, limit: u64) -> Option<exif::Exif> {
         .ok()
 }
 
-/// DriveMode (balise 0x0600 de CameraSettings 0x2020) : [mode, numéro de vue, …].
-/// MakerNote « OM SYSTEM » (en-tête de 16 octets) ou « OLYMPUS » (12),
-/// little-endian, décalages relatifs au début de la MakerNote.
-fn olympus_drive_mode(mn: &[u8]) -> Option<(u16, u16)> {
+/// « 1/500 s   f/4   ISO 12800 » (les éléments absents sont omis).
+fn exposure(exif: &exif::Exif) -> String {
+    let rational = |tag| match exif.get_field(tag, exif::In::PRIMARY)?.value {
+        exif::Value::Rational(ref v) if !v.is_empty() && v[0].denom != 0 => Some(v[0].to_f64()),
+        _ => None,
+    };
+    let mut parts = Vec::new();
+    if let Some(t) = rational(exif::Tag::ExposureTime).filter(|&t| t > 0.0) {
+        parts.push(if t < 0.3 {
+            format!("1/{} s", (1.0 / t).round())
+        } else {
+            format!("{} s", (t * 10.0).round() / 10.0).replace('.', ",")
+        });
+    }
+    if let Some(f) = rational(exif::Tag::FNumber).filter(|&f| f > 0.0) {
+        parts.push(format!("f/{}", (f * 10.0).round() / 10.0).replace('.', ","));
+    }
+    if let Some(iso) = exif
+        .get_field(exif::Tag::PhotographicSensitivity, exif::In::PRIMARY)
+        .and_then(|f| f.value.get_uint(0))
+    {
+        parts.push(format!("ISO {iso}"));
+    }
+    parts.join("   ")
+}
+
+#[derive(Default)]
+struct Olympus {
+    drive: Option<(u16, u16)>,
+    picture_mode: Option<String>,
+    noise_filter: Option<&'static str>,
+}
+
+/// Réglages lus dans CameraSettings (balise 0x2020) de la MakerNote
+/// « OM SYSTEM » (en-tête de 16 octets) ou « OLYMPUS » (12), little-endian,
+/// décalages relatifs au début de la MakerNote. Décodage d'après exiftool.
+fn olympus_settings(mn: &[u8]) -> Option<Olympus> {
     let start = if mn.starts_with(b"OM SYSTEM\0") {
         16
     } else if mn.starts_with(b"OLYMPUS\0II") {
@@ -154,17 +201,66 @@ fn olympus_drive_mode(mn: &[u8]) -> Option<(u16, u16)> {
             .find(|&e| u16_at(e) == Some(tag))
     };
     let settings = u32_at(find(start, 0x2020)? + 8)?;
-    let entry = find(settings, 0x0600)?;
-    let count = u32_at(entry + 4)?;
-    if u16_at(entry + 2)? != 3 || count < 2 {
-        return None; // pas un tableau d'entiers 16 bits
-    }
-    let values = if count * 2 <= 4 {
-        entry + 8
-    } else {
-        u32_at(entry + 8)?
+    // Valeurs 16 bits (types 3 et 8) d'une entrée de CameraSettings.
+    let values = |tag: u16| -> Option<Vec<i32>> {
+        let entry = find(settings, tag)?;
+        let ty = u16_at(entry + 2)?;
+        let count = u32_at(entry + 4)?;
+        if ty != 3 && ty != 8 {
+            return None;
+        }
+        let base = if count * 2 <= 4 { entry + 8 } else { u32_at(entry + 8)? };
+        (0..count)
+            .map(|k| {
+                let v = u16_at(base + 2 * k)?;
+                Some(if ty == 8 { v as i16 as i32 } else { v as i32 })
+            })
+            .collect()
     };
-    Some((u16_at(values)?, u16_at(values + 2)?))
+
+    // DriveMode 0x0600 : [mode, numéro de vue, …], mode 0 = vue unique.
+    let drive = values(0x0600)
+        .filter(|v| v.len() >= 2)
+        .map(|v| (v[0] as u16, v[1] as u16));
+    let picture_mode = values(0x0520).and_then(|v| {
+        Some(
+            match *v.first()? {
+                1 => "Vivid",
+                2 => "Natural",
+                3 => "Muted",
+                4 => "Portrait",
+                5 => "i-Enhance",
+                6 => "e-Portrait",
+                7 => "Color Creator",
+                8 => "Underwater",
+                9 => "Color Profile 1",
+                10 => "Color Profile 2",
+                11 => "Color Profile 3",
+                12 => "Monochrome Profile 1",
+                13 => "Monochrome Profile 2",
+                14 => "Monochrome Profile 3",
+                17 => "Art Mode",
+                18 => "Monochrome Profile 4",
+                256 => "Monotone",
+                512 => "Sepia",
+                n => return Some(format!("mode image {n}")),
+            }
+            .to_string(),
+        )
+    });
+    // NoiseFilter 0x0527 : [valeur, min, max].
+    let noise_filter = values(0x0527).and_then(|v| match v.as_slice() {
+        [-2, -2, 1] => Some("coupé"),
+        [-1, -2, 1] => Some("faible"),
+        [0, -2, 1] => Some("standard"),
+        [1, -2, 1] => Some("fort"),
+        _ => None,
+    });
+    Some(Olympus {
+        drive,
+        picture_mode,
+        noise_filter,
+    })
 }
 
 /// Nombre de jours depuis le 1970-01-01 (algorithme de H. Hinnant).

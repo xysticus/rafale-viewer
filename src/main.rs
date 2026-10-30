@@ -190,6 +190,8 @@ impl App {
                 self.backward_held = pressed;
                 self.direction_key(-1, pressed, now);
             }
+            KeyCode::ArrowUp if pressed => self.burst_step(-1, now),
+            KeyCode::ArrowDown if pressed => self.burst_step(1, now),
             KeyCode::Home if pressed => self.jump(0, now),
             KeyCode::End if pressed => self.jump(self.files.len() - 1, now),
             KeyCode::Space if pressed => self.toggle_mark(),
@@ -221,6 +223,16 @@ impl App {
                 0
             };
             self.next_step_at = now + self.step_interval;
+        }
+    }
+
+    /// Début de la rafale précédente ou suivante.
+    fn burst_step(&mut self, dir: isize, now: Instant) {
+        let Some(&b) = self.burst_of.get(self.cur) else {
+            return;
+        };
+        if let Some(target) = b.checked_add_signed(dir).and_then(|t| self.bursts.get(t)) {
+            self.jump(target.start, now);
         }
     }
 
@@ -362,6 +374,7 @@ impl App {
             Some(Job { index, .. }) if index == self.cur => "aperçu réduit",
             _ => "chargement…",
         };
+        let meta = self.metas[self.cur].as_ref();
         let lines = [
             Line { text: mark.into(), size: 44.0, color: mark_color, gap: 0.0 },
             Line { text: name, size: 30.0, color: [230, 230, 230], gap: 20.0 },
@@ -383,6 +396,25 @@ impl App {
                     None => String::new(),
                 },
                 size: 24.0,
+                color: [150, 150, 150],
+                gap: 4.0,
+            },
+            Line {
+                text: meta.map(|m| m.exposure.clone()).unwrap_or_default(),
+                size: 24.0,
+                color: [205, 205, 205],
+                gap: 16.0,
+            },
+            Line {
+                text: meta
+                    .map(|m| {
+                        let mut parts = Vec::new();
+                        parts.extend(m.picture_mode.clone());
+                        parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
+                        parts.join("   ·   ")
+                    })
+                    .unwrap_or_default(),
+                size: 22.0,
                 color: [150, 150, 150],
                 gap: 4.0,
             },
