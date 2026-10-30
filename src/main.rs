@@ -11,7 +11,7 @@ use lru::LruCache;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
@@ -49,6 +49,7 @@ struct App {
     step_interval: Duration,
 
     shown: Option<Job>,
+    title: String,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
 }
@@ -80,6 +81,7 @@ impl App {
             last_change: now,
             step_interval: Duration::from_secs_f64(1.0 / fps),
             shown: None,
+            title: String::new(),
             window: None,
             renderer: None,
         }
@@ -94,10 +96,18 @@ impl App {
         if event.repeat {
             return;
         }
+        let pressed = event.state == ElementState::Pressed;
+        // Les lettres suivent la disposition du clavier (AZERTY), le reste la position physique.
+        if let Key::Character(c) = &event.logical_key {
+            match c.to_lowercase().as_str() {
+                "f" if pressed => return self.toggle_fullscreen(),
+                "q" if pressed => return event_loop.exit(),
+                _ => {}
+            }
+        }
         let PhysicalKey::Code(code) = event.physical_key else {
             return;
         };
-        let pressed = event.state == ElementState::Pressed;
         let now = Instant::now();
         match code {
             KeyCode::ArrowRight | KeyCode::PageDown => {
@@ -111,14 +121,16 @@ impl App {
             KeyCode::Home if pressed => self.jump(0, now),
             KeyCode::End if pressed => self.jump(self.files.len() - 1, now),
             KeyCode::Space if pressed => self.toggle_mark(),
-            KeyCode::KeyF | KeyCode::F11 if pressed => {
-                if let Some(w) = &self.window {
-                    let fs = w.fullscreen().is_none().then(|| Fullscreen::Borderless(None));
-                    w.set_fullscreen(fs);
-                }
-            }
-            KeyCode::Escape | KeyCode::KeyQ if pressed => event_loop.exit(),
+            KeyCode::F11 if pressed => self.toggle_fullscreen(),
+            KeyCode::Escape if pressed => event_loop.exit(),
             _ => {}
+        }
+    }
+
+    fn toggle_fullscreen(&self) {
+        if let Some(w) = &self.window {
+            let fs = w.fullscreen().is_none().then(|| Fullscreen::Borderless(None));
+            w.set_fullscreen(fs);
         }
     }
 
@@ -245,7 +257,7 @@ impl App {
         self.update_title();
     }
 
-    fn update_title(&self) {
+    fn update_title(&mut self) {
         let Some(window) = &self.window else { return };
         let name = self.files[self.cur]
             .file_name()
@@ -257,11 +269,12 @@ impl App {
             Some(Job { index, .. }) if index == self.cur => "  · réduit",
             _ => "  · chargement…",
         };
-        window.set_title(&format!(
-            "{name}  {}/{}{mark}{quality}",
-            self.cur + 1,
-            self.files.len()
-        ));
+        let title = format!("{name}  {}/{}{mark}{quality}", self.cur + 1, self.files.len());
+        // set_title redessine les décorations, ce qui relance la boucle : seulement si changé.
+        if title != self.title {
+            window.set_title(&title);
+            self.title = title;
+        }
     }
 
     /// Une itération de la logique, après chaque lot d'événements.
