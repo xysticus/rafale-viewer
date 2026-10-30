@@ -1,4 +1,5 @@
 mod loader;
+mod meta;
 mod panel;
 mod render;
 
@@ -10,14 +11,15 @@ use std::time::{Duration, Instant};
 
 use lru::LruCache;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
-use panel::{Line, Panel};
-use render::Renderer;
+use meta::Meta;
+use panel::{Line, Panel, Row};
+use render::{Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
 const HOLD_DELAY: Duration = Duration::from_millis(300);
@@ -27,6 +29,11 @@ const FULL_DELAY: Duration = Duration::from_millis(100);
 const PREFETCH: isize = 10;
 const DEFAULT_FPS: f64 = 25.0;
 const MARK_DIR: &str = "retenus";
+
+struct Burst {
+    start: usize,
+    len: usize,
+}
 
 struct App {
     dir: PathBuf,
@@ -59,12 +66,31 @@ struct App {
     cursor: Option<(f32, f32)>,
     loupe_allowed: bool,
     cursor_hidden: bool,
+
+    /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
+    scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
+    metas: Vec<Option<Meta>>,
+    scanned: usize,
+    bursts: Vec<Burst>,
+    /// Rafale de chaque fichier déjà analysé.
+    burst_of: Vec<usize>,
+    /// Décalage de la liste à la molette (en lignes), remis à zéro au changement de rafale.
+    list_offset: isize,
+    list_burst: Option<usize>,
+    list_key: String,
+    /// Zones cliquables de la liste : (début de rafale, haut, bas), relatives à la liste.
+    list_hits: Vec<(usize, f32, f32)>,
+    list_track: Option<(f32, f32, f32)>,
+
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
 }
 
 impl App {
     fn new(dir: PathBuf, files: Vec<PathBuf>, proxy: EventLoopProxy<()>, fps: f64) -> Self {
+        let files = Arc::new(files);
+        let (scan_tx, scan_rx) = crossbeam_channel::unbounded();
+        meta::spawn(files.clone(), scan_tx, proxy.clone());
         let marked = files
             .iter()
             .enumerate()
@@ -74,7 +100,8 @@ impl App {
         let now = Instant::now();
         App {
             dir,
-            files: Arc::new(files),
+            metas: (0..files.len()).map(|_| None).collect(),
+            files,
             marked,
             proxy,
             loader: None,
@@ -96,6 +123,15 @@ impl App {
             cursor: None,
             loupe_allowed: false,
             cursor_hidden: false,
+            scan_rx,
+            scanned: 0,
+            bursts: Vec::new(),
+            burst_of: Vec::new(),
+            list_offset: 0,
+            list_burst: None,
+            list_key: String::new(),
+            list_hits: Vec::new(),
+            list_track: None,
             window: None,
             renderer: None,
         }
@@ -313,6 +349,20 @@ impl App {
                 color: [150, 150, 150],
                 gap: 4.0,
             },
+            Line {
+                text: match self.burst_of.get(self.cur) {
+                    Some(&b) => format!(
+                        "Rafale {}   vue {} / {}",
+                        b + 1,
+                        self.cur - self.bursts[b].start + 1,
+                        self.bursts[b].len
+                    ),
+                    None => String::new(),
+                },
+                size: 24.0,
+                color: [150, 150, 150],
+                gap: 4.0,
+            },
             Line { text: status.into(), size: 22.0, color: [125, 125, 125], gap: 20.0 },
         ];
         let key = format!(
@@ -322,12 +372,140 @@ impl App {
         if key == self.panel_key {
             return;
         }
-        let (pixels, w, h) = self.panel.render(width, &lines);
+        let (pixels, w, h) = self.panel.render_info(width, &lines);
         renderer.set_panel(&pixels, w, h);
         self.panel_key = key;
         if let Some(w) = &self.window {
             w.request_redraw();
         }
+    }
+
+    fn add_meta(&mut self, index: usize, meta: Meta) {
+        debug_assert_eq!(index, self.burst_of.len(), "analyse dans l'ordre");
+        let continues = index > 0
+            && self.metas[index - 1]
+                .as_ref()
+                .is_some_and(|prev| meta::same_burst(prev, &meta));
+        match self.bursts.last_mut() {
+            Some(b) if continues => b.len += 1,
+            _ => self.bursts.push(Burst {
+                start: index,
+                len: 1,
+            }),
+        }
+        self.burst_of.push(self.bursts.len() - 1);
+        self.metas[index] = Some(meta);
+        self.scanned = index + 1;
+        if self.scanned == self.files.len() {
+            log::info!("{} rafales", self.bursts.len());
+        }
+    }
+
+    /// Liste des rafales autour de la rafale courante ; recomposée seulement si elle change.
+    fn update_list(&mut self) {
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let width = renderer.panel_width();
+        let (lx, ly) = renderer.list_origin();
+        let (_, wh) = renderer.window_size();
+        let height = (wh - ly).max(0.0) as u32;
+        let status = if self.scanned < self.files.len() {
+            format!("Analyse des rafales…  {} / {}", self.scanned, self.files.len())
+        } else {
+            String::new()
+        };
+        let header = if status.is_empty() { 0.0 } else { panel::PADDING };
+        let fit = ((height as f32 - header) / Panel::row_height(width)).max(0.0) as isize;
+
+        let cur_burst = self.burst_of.get(self.cur).copied();
+        if cur_burst != self.list_burst {
+            self.list_burst = cur_burst;
+            self.list_offset = 0;
+        }
+        // Rafale courante au premier tiers, décalable à la molette.
+        let anchor = cur_burst.unwrap_or(0) as isize - fit / 3;
+        let last_first = (self.bursts.len() as isize - fit).max(0);
+        let first = (anchor + self.list_offset).clamp(0, last_first);
+        self.list_offset = first - anchor;
+        let rows: Vec<Row> = self
+            .bursts
+            .iter()
+            .enumerate()
+            .skip(first as usize)
+            .take(fit as usize)
+            .map(|(i, b)| Row {
+                start: b.start,
+                len: b.len,
+                number: i + 1,
+                marked: (b.start..b.start + b.len)
+                    .filter(|j| self.marked.contains(j))
+                    .count(),
+                current: Some(i) == cur_burst,
+            })
+            .collect();
+
+        let key = format!("{width}x{height} {status} {rows:?}");
+        if key != self.list_key {
+            let list = self
+                .panel
+                .render_list(width, height, &rows, &self.metas, &status);
+            renderer.set_list(&list.pixels, list.width, list.height);
+            self.list_hits = list.hits;
+            self.list_track = list.track;
+            self.list_key = key;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+
+        // Repère de position de l'image courante dans sa rafale.
+        let marker = self.list_track.zip(cur_burst).map(|((x, y, span), b)| {
+            let burst = &self.bursts[b];
+            let step = span / burst.len as f32;
+            Rect {
+                x: lx + x + step * (self.cur - burst.start) as f32,
+                y: ly + y,
+                w: step.max(3.0),
+                h: 3.0,
+            }
+        });
+        if renderer.set_marker(marker) {
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+    }
+
+    /// Clic dans la liste : positionne la vue au début de la rafale.
+    fn click(&mut self) {
+        let (Some((cx, cy)), Some(renderer)) = (self.cursor, &self.renderer) else {
+            return;
+        };
+        let (lx, ly) = renderer.list_origin();
+        if cx < lx {
+            return;
+        }
+        let y = cy - ly;
+        if let Some(&(start, _, _)) = self.list_hits.iter().find(|(_, top, bottom)| (*top..*bottom).contains(&y)) {
+            self.jump(start, Instant::now());
+        }
+    }
+
+    fn wheel(&mut self, delta: MouseScrollDelta) {
+        let (Some((cx, _)), Some(renderer)) = (self.cursor, &self.renderer) else {
+            return;
+        };
+        if cx < renderer.list_origin().0 {
+            return;
+        }
+        let rows = match delta {
+            MouseScrollDelta::LineDelta(_, y) => -y.signum() as isize,
+            MouseScrollDelta::PixelDelta(p) => {
+                -(p.y as f32 / Panel::row_height(renderer.panel_width())).round() as isize
+            }
+        };
+        self.list_offset += rows;
     }
 
     fn update_title(&mut self) {
@@ -352,6 +530,9 @@ impl App {
 
     /// Une itération de la logique, après chaque lot d'événements.
     fn update(&mut self, event_loop: &ActiveEventLoop) {
+        while let Ok((index, meta)) = self.scan_rx.try_recv() {
+            self.add_meta(index, meta);
+        }
         let Some(loader) = &self.loader else { return };
         while let Some(done) = loader.try_recv() {
             match done.job.quality {
@@ -396,6 +577,7 @@ impl App {
             }
         }
         self.update_panel();
+        self.update_list();
         self.update_title();
 
         // Prochain réveil : pas de défilé, ou lancement de la pleine résolution.
@@ -472,6 +654,12 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => self.click(),
+            WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
             WindowEvent::CursorLeft { .. } => {
                 self.cursor = None;
                 if let Some(w) = &self.window {
