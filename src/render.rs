@@ -1,4 +1,5 @@
-//! Affichage wgpu : un quad texturé, cadré dans la fenêtre, orienté selon l'EXIF.
+//! Affichage wgpu : image calée à gauche, loupe 100 % sous le pointeur,
+//! panneau d'informations à droite. Chaque élément est un quad texturé.
 
 use std::sync::Arc;
 
@@ -13,13 +14,49 @@ const BACKGROUND: wgpu::Color = wgpu::Color {
     b: 0.02,
     a: 1.0,
 };
+/// Côté de la loupe, en pixels écran (= pixels de l'image, à 100 %).
+const LOUPE_SIZE: f32 = 600.0;
+const LOUPE_BORDER: f32 = 2.0;
+/// Le panneau occupe la place laissée par une image 4:3 en hauteur pleine.
+const PANEL_ASPECT: f32 = 4.0 / 3.0;
+const PANEL_MIN_WIDTH: f32 = 280.0;
+const PARAMS_SIZE: u64 = 48;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Rect {
+    pub fn contains(&self, (px, py): (f32, f32)) -> bool {
+        px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
+    }
+}
+
+/// Un élément dessiné : sa texture (via le bind group) et ses paramètres.
+struct Quad {
+    params: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+}
 
 struct Shown {
-    bind_group: wgpu::BindGroup,
-    /// Dimensions affichées en pleine résolution, après orientation.
+    image: Quad,
+    loupe: Quad,
+    /// Dimensions pleine résolution, après orientation.
     display_w: f32,
     display_h: f32,
     orientation: u32,
+    /// Texture pleine résolution : la loupe est possible.
+    full: bool,
+}
+
+struct PanelTex {
+    quad: Quad,
+    width: f32,
+    height: f32,
 }
 
 pub struct Renderer {
@@ -30,9 +67,11 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    params: wgpu::Buffer,
+    linear: wgpu::Sampler,
+    nearest: wgpu::Sampler,
+    border: Quad,
     shown: Option<Shown>,
+    panel: Option<PanelTex>,
 }
 
 impl Renderer {
@@ -133,22 +172,24 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(format.into())],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    // Pour le texte du panneau ; les photos sont opaques.
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             multiview_mask: None,
             cache: None,
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let linear = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let params = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: 16,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let nearest = device.create_sampler(&Default::default());
+        let border = upload(&device, &queue, &[190, 190, 190, 255], 1, 1);
+        let border = make_quad(&device, &layout, &nearest, &border);
 
         Renderer {
             window,
@@ -158,9 +199,11 @@ impl Renderer {
             config,
             pipeline,
             layout,
-            sampler,
-            params,
+            linear,
+            nearest,
+            border,
             shown: None,
+            panel: None,
         }
     }
 
@@ -170,68 +213,113 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
+    fn window_size(&self) -> (f32, f32) {
+        (self.config.width as f32, self.config.height as f32)
+    }
+
+    fn upload(&self, pixels: &[u8], width: u32, height: u32) -> wgpu::TextureView {
+        upload(&self.device, &self.queue, pixels, width, height)
+    }
+
+    fn quad(&self, view: &wgpu::TextureView, nearest: bool) -> Quad {
+        let sampler = if nearest { &self.nearest } else { &self.linear };
+        make_quad(&self.device, &self.layout, sampler, view)
+    }
+
+    /// Place un quad : `dst` en pixels écran, `src` en [0, 1] dans l'image orientée.
+    fn place(&self, quad: &Quad, dst: Rect, src: [f32; 4], orientation: u32) {
+        let (ww, wh) = self.window_size();
+        let ndc = [
+            dst.x / ww * 2.0 - 1.0,
+            1.0 - dst.y / wh * 2.0,
+            (dst.x + dst.w) / ww * 2.0 - 1.0,
+            1.0 - (dst.y + dst.h) / wh * 2.0,
+        ];
+        let mut params = [0u32; 12];
+        for (i, v) in ndc.iter().chain(&src).enumerate() {
+            params[i] = v.to_bits();
+        }
+        params[8] = orientation;
+        self.queue
+            .write_buffer(&quad.params, 0, bytemuck::cast_slice(&params));
+    }
+
     /// Envoie l'image au GPU ; elle sera affichée au prochain `render`.
-    pub fn set_image(&mut self, img: &Decoded) {
-        let size = wgpu::Extent3d {
-            width: img.width,
-            height: img.height,
-            depth_or_array_layers: 1,
-        };
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        self.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &img.pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * img.width),
-                rows_per_image: Some(img.height),
-            },
-            size,
-        );
-        let view = texture.create_view(&Default::default());
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.params.as_entire_binding(),
-                },
-            ],
-        });
+    pub fn set_image(&mut self, img: &Decoded, full: bool) {
+        let view = self.upload(&img.pixels, img.width, img.height);
         let (w, h) = (img.full_width as f32, img.full_height as f32);
         let (display_w, display_h) = if img.orientation >= 5 { (h, w) } else { (w, h) };
         self.shown = Some(Shown {
-            bind_group,
+            image: self.quad(&view, false),
+            loupe: self.quad(&view, true),
             display_w,
             display_h,
             orientation: img.orientation as u32,
+            full,
         });
     }
 
-    pub fn render(&mut self) {
+    /// Image ajustée à la fenêtre (sans dépasser 100 %), calée à gauche, centrée verticalement.
+    pub fn image_rect(&self) -> Option<Rect> {
+        let s = self.shown.as_ref()?;
+        let (ww, wh) = self.window_size();
+        let fit = (ww / s.display_w).min(wh / s.display_h).min(1.0);
+        let (w, h) = (s.display_w * fit, s.display_h * fit);
+        Some(Rect {
+            x: 0.0,
+            y: ((wh - h) / 2.0).round(),
+            w,
+            h,
+        })
+    }
+
+    /// Largeur du panneau d'informations, à droite de la fenêtre.
+    pub fn panel_width(&self) -> u32 {
+        let (ww, wh) = self.window_size();
+        (ww - wh * PANEL_ASPECT).max(PANEL_MIN_WIDTH).min(ww) as u32
+    }
+
+    pub fn set_panel(&mut self, pixels: &[u8], width: u32, height: u32) {
+        let view = self.upload(pixels, width, height);
+        self.panel = Some(PanelTex {
+            quad: self.quad(&view, true),
+            width: width as f32,
+            height: height as f32,
+        });
+    }
+
+    /// Loupe centrée sur `cursor` : rectangle écran et rectangle source, alignés au pixel.
+    fn loupe_rects(&self, cursor: (f32, f32)) -> Option<(Rect, [f32; 4])> {
+        let s = self.shown.as_ref().filter(|s| s.full)?;
+        let r = self.image_rect()?;
+        if !r.contains(cursor) {
+            return None;
+        }
+        let (ww, wh) = self.window_size();
+        let size = LOUPE_SIZE.min(ww).min(wh);
+        let (sw, sh) = (size.min(s.display_w), size.min(s.display_h));
+        // Point de l'image sous le pointeur, en pixels pleine résolution.
+        let ix = (cursor.0 - r.x) / r.w * s.display_w;
+        let iy = (cursor.1 - r.y) / r.h * s.display_h;
+        let sx = (ix - sw / 2.0).round().clamp(0.0, s.display_w - sw);
+        let sy = (iy - sh / 2.0).round().clamp(0.0, s.display_h - sh);
+        let dst = Rect {
+            x: (cursor.0 - sw / 2.0).round().clamp(0.0, ww - sw),
+            y: (cursor.1 - sh / 2.0).round().clamp(0.0, wh - sh),
+            w: sw,
+            h: sh,
+        };
+        let src = [
+            sx / s.display_w,
+            sy / s.display_h,
+            (sx + sw) / s.display_w,
+            (sy + sh) / s.display_h,
+        ];
+        Some((dst, src))
+    }
+
+    /// Dessine la vue ; renvoie `true` si la loupe est affichée.
+    pub fn render(&mut self, loupe_at: Option<(f32, f32)>) -> bool {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
@@ -241,27 +329,49 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.device, &self.config);
                 self.window.request_redraw();
-                return;
+                return false;
             }
             other => {
                 log::warn!("surface indisponible : {other:?}");
-                return;
+                return false;
             }
         };
         let view = frame.texture.create_view(&Default::default());
 
-        if let Some(shown) = &self.shown {
-            // Ajusté à la fenêtre, sans agrandir au-delà de 100 %.
-            let (ww, wh) = (self.config.width as f32, self.config.height as f32);
-            let fit = (ww / shown.display_w).min(wh / shown.display_h).min(1.0);
-            let params: [u32; 4] = [
-                (shown.display_w * fit / ww).to_bits(),
-                (shown.display_h * fit / wh).to_bits(),
-                shown.orientation,
-                0,
-            ];
-            self.queue
-                .write_buffer(&self.params, 0, bytemuck::cast_slice(&params));
+        // Ordre de dessin : image, panneau, puis loupe par-dessus (elle peut déborder).
+        let full_src = [0.0, 0.0, 1.0, 1.0];
+        let mut draws: Vec<&Quad> = Vec::with_capacity(4);
+        if let (Some(s), Some(r)) = (&self.shown, self.image_rect()) {
+            self.place(&s.image, r, full_src, s.orientation);
+            draws.push(&s.image);
+        }
+        if let Some(p) = &self.panel {
+            let (ww, _) = self.window_size();
+            let dst = Rect {
+                x: ww - p.width,
+                y: 0.0,
+                w: p.width,
+                h: p.height,
+            };
+            self.place(&p.quad, dst, full_src, 1);
+            draws.push(&p.quad);
+        }
+        let mut loupe = false;
+        if let Some(s) = &self.shown {
+            if let Some((dst, src)) = loupe_at.and_then(|c| self.loupe_rects(c)) {
+                let b = LOUPE_BORDER;
+                let frame = Rect {
+                    x: dst.x - b,
+                    y: dst.y - b,
+                    w: dst.w + 2.0 * b,
+                    h: dst.h + 2.0 * b,
+                };
+                self.place(&self.border, frame, full_src, 1);
+                self.place(&s.loupe, dst, src, s.orientation);
+                draws.push(&self.border);
+                draws.push(&s.loupe);
+                loupe = true;
+            }
         }
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -282,14 +392,88 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if let Some(shown) = &self.shown {
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &shown.bind_group, &[]);
+            pass.set_pipeline(&self.pipeline);
+            for quad in draws {
+                pass.set_bind_group(0, &quad.bind_group, &[]);
                 pass.draw(0..4, 0..1);
             }
         }
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.queue.present(frame);
+        loupe
     }
+}
+
+fn upload(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+) -> wgpu::TextureView {
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: Some(height),
+        },
+        size,
+    );
+    texture.create_view(&Default::default())
+}
+
+fn make_quad(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    view: &wgpu::TextureView,
+) -> Quad {
+    let params = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: PARAMS_SIZE,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: params.as_entire_binding(),
+            },
+        ],
+    });
+    Quad { params, bind_group }
 }

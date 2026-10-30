@@ -1,4 +1,5 @@
 mod loader;
+mod panel;
 mod render;
 
 use std::collections::HashSet;
@@ -15,6 +16,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
+use panel::{Line, Panel};
 use render::Renderer;
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -50,6 +52,13 @@ struct App {
 
     shown: Option<Job>,
     title: String,
+    panel: Panel,
+    /// Contenu du panneau actuellement affiché (texte et largeur).
+    panel_key: String,
+    /// Position du pointeur dans la fenêtre, en pixels physiques.
+    cursor: Option<(f32, f32)>,
+    loupe_allowed: bool,
+    cursor_hidden: bool,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
 }
@@ -82,6 +91,11 @@ impl App {
             step_interval: Duration::from_secs_f64(1.0 / fps),
             shown: None,
             title: String::new(),
+            panel: Panel::load(),
+            panel_key: String::new(),
+            cursor: None,
+            loupe_allowed: false,
+            cursor_hidden: false,
             window: None,
             renderer: None,
         }
@@ -257,6 +271,65 @@ impl App {
         self.update_title();
     }
 
+    /// La loupe ne s'affiche qu'à l'arrêt, sur l'image en pleine résolution.
+    fn loupe_allowed(&self) -> bool {
+        self.scrolling == 0
+            && self.pending == 0
+            && self.shown
+                == Some(Job {
+                    index: self.cur,
+                    quality: Quality::Full,
+                })
+    }
+
+    fn update_panel(&mut self) {
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let width = renderer.panel_width();
+        let name = self.files[self.cur]
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let (mark, mark_color) = if self.marked.contains(&self.cur) {
+            ("★ Retenue", [110, 210, 120])
+        } else {
+            ("Non retenue", [105, 105, 105])
+        };
+        let status = match self.shown {
+            Some(Job { index, quality: Quality::Full }) if index == self.cur => {
+                "100 % : loupe sous le pointeur"
+            }
+            Some(Job { index, .. }) if index == self.cur => "aperçu réduit",
+            _ => "chargement…",
+        };
+        let lines = [
+            Line { text: mark.into(), size: 44.0, color: mark_color, gap: 0.0 },
+            Line { text: name, size: 30.0, color: [230, 230, 230], gap: 20.0 },
+            Line {
+                text: format!("{} / {}", self.cur + 1, self.files.len()),
+                size: 24.0,
+                color: [150, 150, 150],
+                gap: 4.0,
+            },
+            Line { text: status.into(), size: 22.0, color: [125, 125, 125], gap: 20.0 },
+        ];
+        let key = format!(
+            "{width}|{}",
+            lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("|")
+        );
+        if key == self.panel_key {
+            return;
+        }
+        let (pixels, w, h) = self.panel.render(width, &lines);
+        renderer.set_panel(&pixels, w, h);
+        self.panel_key = key;
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
     fn update_title(&mut self) {
         let Some(window) = &self.window else { return };
         let name = self.files[self.cur]
@@ -307,7 +380,7 @@ impl App {
             };
             if self.shown != Some(job) {
                 if let Some(r) = &mut self.renderer {
-                    r.set_image(&img);
+                    r.set_image(&img, quality == Quality::Full);
                 }
                 self.shown = Some(job);
                 if let Some(w) = &self.window {
@@ -315,6 +388,14 @@ impl App {
                 }
             }
         }
+        let loupe_allowed = self.loupe_allowed();
+        if loupe_allowed != self.loupe_allowed {
+            self.loupe_allowed = loupe_allowed;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+        self.update_panel();
         self.update_title();
 
         // Prochain réveil : pas de défilé, ou lancement de la pleine résolution.
@@ -371,8 +452,30 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let loupe_at = self.cursor.filter(|_| self.loupe_allowed);
                 if let Some(r) = &mut self.renderer {
-                    r.render();
+                    // Pointeur masqué sous la loupe, pour ne pas cacher le visage.
+                    let hide = r.render(loupe_at);
+                    if hide != self.cursor_hidden {
+                        self.cursor_hidden = hide;
+                        if let Some(w) = &self.window {
+                            w.set_cursor_visible(!hide);
+                        }
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = Some((position.x as f32, position.y as f32));
+                if self.loupe_allowed {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.cursor = None;
+                if let Some(w) = &self.window {
+                    w.request_redraw();
                 }
             }
             WindowEvent::Focused(false) => {
