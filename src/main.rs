@@ -1,9 +1,9 @@
 mod loader;
+mod marks;
 mod meta;
 mod panel;
 mod render;
 
-use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,6 +17,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
+use marks::{Color, Mark};
 use meta::Meta;
 use panel::{Line, Panel, Row};
 use render::{Rect, Renderer};
@@ -28,7 +29,6 @@ const FULL_DELAY: Duration = Duration::from_millis(100);
 /// Préchargement en résolution réduite de part et d'autre de l'image courante.
 const PREFETCH: isize = 10;
 const DEFAULT_FPS: f64 = 25.0;
-const MARK_DIR: &str = "retenus";
 
 struct Burst {
     start: usize,
@@ -53,9 +53,8 @@ const SCROLLBAR_WIDTH: f32 = 6.0;
 const SCROLLBAR_GRAB: f32 = 8.0;
 
 struct App {
-    dir: PathBuf,
     files: Arc<Vec<PathBuf>>,
-    marked: HashSet<usize>,
+    marks: Vec<Mark>,
     proxy: EventLoopProxy<()>,
     loader: Option<Loader>,
     reduced: LruCache<usize, Arc<Decoded>>,
@@ -111,18 +110,25 @@ impl App {
         let files = Arc::new(files);
         let (scan_tx, scan_rx) = crossbeam_channel::unbounded();
         meta::spawn(files.clone(), scan_tx, proxy.clone());
-        let marked = files
+        // Un seul parcours du dossier pour trouver les XMP existants.
+        let sidecars: std::collections::HashSet<PathBuf> = std::fs::read_dir(&dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()).collect())
+            .unwrap_or_default();
+        let marks = files
             .iter()
-            .enumerate()
-            .filter(|(_, f)| mark_path(&dir, f).exists())
-            .map(|(i, _)| i)
+            .map(|f| {
+                if sidecars.contains(&marks::sidecar(f)) {
+                    marks::load(f)
+                } else {
+                    Mark::default()
+                }
+            })
             .collect();
         let now = Instant::now();
         App {
-            dir,
             metas: (0..files.len()).map(|_| None).collect(),
             files,
-            marked,
+            marks,
             proxy,
             loader: None,
             reduced: LruCache::new(NonZeroUsize::new(64).unwrap()),
@@ -174,6 +180,13 @@ impl App {
             match c.to_lowercase().as_str() {
                 "f" if pressed => return self.toggle_fullscreen(),
                 "q" if pressed => return event_loop.exit(),
+                // Rejet : X comme Lightroom, R comme darktable.
+                "x" | "r" if pressed => {
+                    return self.edit_mark(|m| {
+                        m.rejected = !m.rejected;
+                        m.rating = 0;
+                    });
+                }
                 _ => {}
             }
         }
@@ -194,7 +207,21 @@ impl App {
             KeyCode::ArrowDown if pressed => self.burst_step(1, now),
             KeyCode::Home if pressed => self.jump(0, now),
             KeyCode::End if pressed => self.jump(self.files.len() - 1, now),
-            KeyCode::Space if pressed => self.toggle_mark(),
+            KeyCode::Space if pressed => self.edit_mark(|m| {
+                m.rating = if m.retained() { 0 } else { 1 };
+                m.rejected = false;
+            }),
+            KeyCode::Digit0 | KeyCode::Numpad0 if pressed => self.set_rating(0),
+            KeyCode::Digit1 | KeyCode::Numpad1 if pressed => self.set_rating(1),
+            KeyCode::Digit2 | KeyCode::Numpad2 if pressed => self.set_rating(2),
+            KeyCode::Digit3 | KeyCode::Numpad3 if pressed => self.set_rating(3),
+            KeyCode::Digit4 | KeyCode::Numpad4 if pressed => self.set_rating(4),
+            KeyCode::Digit5 | KeyCode::Numpad5 if pressed => self.set_rating(5),
+            KeyCode::F1 if pressed => self.toggle_color(Color::Red),
+            KeyCode::F2 if pressed => self.toggle_color(Color::Yellow),
+            KeyCode::F3 if pressed => self.toggle_color(Color::Green),
+            KeyCode::F4 if pressed => self.toggle_color(Color::Blue),
+            KeyCode::F5 if pressed => self.toggle_color(Color::Purple),
             KeyCode::F11 if pressed => self.toggle_fullscreen(),
             KeyCode::Escape if pressed => event_loop.exit(),
             _ => {}
@@ -320,25 +347,32 @@ impl App {
         jobs
     }
 
-    fn toggle_mark(&mut self) {
-        let src = self.files[self.cur].clone();
-        let dst = mark_path(&self.dir, &src);
-        if self.marked.remove(&self.cur) {
-            if let Err(e) = std::fs::remove_file(&dst) {
-                log::warn!("suppression de {} : {e}", dst.display());
-            }
-        } else {
-            self.marked.insert(self.cur);
-            // Copie en arrière-plan pour ne pas bloquer l'affichage.
-            std::thread::spawn(move || {
-                let r = std::fs::create_dir_all(dst.parent().unwrap())
-                    .and_then(|_| std::fs::copy(&src, &dst));
-                if let Err(e) = r {
-                    log::error!("copie vers {} : {e}", dst.display());
-                }
-            });
+    /// Modifie le marquage de l'image courante et l'enregistre dans son XMP.
+    fn edit_mark(&mut self, f: impl FnOnce(&mut Mark)) {
+        let mark = &mut self.marks[self.cur];
+        if mark.foreign {
+            log::warn!(
+                "{} : XMP d'un autre logiciel, marquage non modifié",
+                self.files[self.cur].display()
+            );
+            return;
         }
-        self.update_title();
+        f(mark);
+        if let Err(e) = marks::save(&self.files[self.cur], mark) {
+            log::error!("{} : {e}", marks::sidecar(&self.files[self.cur]).display());
+        }
+    }
+
+    /// Chiffre = nombre d'étoiles (0 efface) ; annule un rejet.
+    fn set_rating(&mut self, stars: u8) {
+        self.edit_mark(|m| {
+            m.rating = stars;
+            m.rejected = false;
+        });
+    }
+
+    fn toggle_color(&mut self, color: Color) {
+        self.edit_mark(|m| m.color = if m.color == Some(color) { None } else { Some(color) });
     }
 
     /// La loupe ne s'affiche qu'à l'arrêt, sur l'image en pleine résolution.
@@ -362,10 +396,19 @@ impl App {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let (mark, mark_color) = if self.marked.contains(&self.cur) {
-            ("★ Retenue", [110, 210, 120])
+        let m = self.marks[self.cur];
+        let (mark, mark_color) = if m.rejected {
+            ("× Rejetée".to_string(), [225, 85, 75])
+        } else if m.retained() {
+            (format!("{}  Retenue", "★".repeat(m.rating as usize)), [110, 210, 120])
         } else {
-            ("Non retenue", [105, 105, 105])
+            ("Non retenue".to_string(), [105, 105, 105])
+        };
+        let label = match (m.color, m.foreign) {
+            (Some(c), false) => (format!("Étiquette {}", c.name_fr()), c.rgb()),
+            (Some(c), true) => (format!("Étiquette {}   (XMP externe, lecture seule)", c.name_fr()), c.rgb()),
+            (None, true) => ("XMP externe, lecture seule".to_string(), [150, 150, 150]),
+            (None, false) => (String::new(), [0, 0, 0]),
         };
         let status = match self.shown {
             Some(Job { index, quality: Quality::Full }) if index == self.cur => {
@@ -376,7 +419,8 @@ impl App {
         };
         let meta = self.metas[self.cur].as_ref();
         let lines = [
-            Line { text: mark.into(), size: 44.0, color: mark_color, gap: 0.0 },
+            Line { text: mark, size: 44.0, color: mark_color, gap: 0.0 },
+            Line { text: label.0, size: 22.0, color: label.1, gap: 2.0 },
             Line { text: name, size: 30.0, color: [230, 230, 230], gap: 20.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
@@ -516,8 +560,9 @@ impl App {
                 len: b.len,
                 number: i + 1,
                 rate: b.rate,
-                marked: (b.start..b.start + b.len)
-                    .filter(|j| self.marked.contains(j))
+                marked: self.marks[b.start..b.start + b.len]
+                    .iter()
+                    .filter(|m| m.retained())
                     .count(),
                 current: Some(i) == cur_burst,
             })
@@ -638,7 +683,12 @@ impl App {
             .file_name()
             .unwrap_or_default()
             .to_string_lossy();
-        let mark = if self.marked.contains(&self.cur) { "  ★" } else { "" };
+        let m = self.marks[self.cur];
+        let mark = if m.rejected {
+            "  ×".to_string()
+        } else {
+            format!("  {}", "★".repeat(m.rating as usize))
+        };
         let quality = match self.shown {
             Some(Job { index, quality: Quality::Full }) if index == self.cur => "",
             Some(Job { index, .. }) if index == self.cur => "  · réduit",
@@ -816,10 +866,6 @@ impl ApplicationHandler for App {
         // Arrête les threads de décodage avant de libérer le GPU.
         self.loader = None;
     }
-}
-
-fn mark_path(dir: &Path, file: &Path) -> PathBuf {
-    dir.join(MARK_DIR).join(file.file_name().unwrap())
 }
 
 fn list_jpegs(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
