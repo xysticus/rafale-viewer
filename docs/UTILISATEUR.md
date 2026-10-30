@@ -109,7 +109,7 @@ Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), d
 |---|---|---|
 | darktable | étoiles, rejet, couleur | Importer avec **« ajouter à la bibliothèque »**. « Copier et importer » ignore les `.xmp`. Après l'import, c'est la base de données de darktable qui fait foi. |
 | digiKam | étoiles, couleur, retenue / rejetée | Activer la lecture des sidecars : *Configuration › Métadonnées › Sidecars*. |
-| RawTherapee (5.11 et plus) | étoiles, couleur (pas le rejet) | Activer la synchronisation des notes et couleurs avec les XMP (Préférences › Navigateur de fichiers). Mettre `XMPSidecarStyle=ext` dans la section `[Metadata]` du fichier `~/.config/RawTherapee/options`, pour qu'il lise `PA290123.ORF.xmp` au lieu de `PA290123.xmp`. Une photo rejetée y apparaît sans étoile. |
+| RawTherapee (5.11 et plus) | étoiles, couleur (pas le rejet) | Activer la synchronisation des notes et couleurs avec les XMP (Préférences › Navigateur de fichiers). Mettre `XMPSidecarStyle=ext` dans la section `[Metadata]` du fichier `options` de RawTherapee (version Flatpak : `~/.var/app/com.rawtherapee.RawTherapee/config/RawTherapee/options` ; paquet classique : `~/.config/RawTherapee/options`), RawTherapee fermé, pour qu'il lise `PA290123.ORF.xmp` au lieu de `PA290123.xmp`. Une photo rejetée y apparaît sans étoile. |
 | Lightroom | étoiles, rejet, couleur | Conventions Lightroom respectées (`xmp:Rating`, `xmp:Label`). |
 
 **Le fichier XMP d'un autre logiciel n'est jamais modifié.** C'est le cas par exemple après un import dans darktable, qui y range l'historique de tes retouches. Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.
