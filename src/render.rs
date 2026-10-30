@@ -75,6 +75,10 @@ pub struct Renderer {
     /// Repère de position dans la rafale courante (rectangle blanc).
     marker: Quad,
     marker_rect: Option<Rect>,
+    /// Ascenseur de la liste : piste et curseur.
+    track: Quad,
+    thumb: Quad,
+    scrollbar: Option<(Rect, Rect)>,
     shown: Option<Shown>,
     /// Informations sur l'image courante, en haut à droite.
     panel: Option<PanelTex>,
@@ -200,6 +204,10 @@ impl Renderer {
         let border = make_quad(&device, &layout, &nearest, &border);
         let white = upload(&device, &queue, &[235, 235, 235, 255], 1, 1);
         let marker = make_quad(&device, &layout, &nearest, &white);
+        let track = upload(&device, &queue, &[40, 40, 40, 255], 1, 1);
+        let track = make_quad(&device, &layout, &nearest, &track);
+        let thumb = upload(&device, &queue, &[120, 120, 120, 255], 1, 1);
+        let thumb = make_quad(&device, &layout, &nearest, &thumb);
 
         Renderer {
             window,
@@ -214,6 +222,9 @@ impl Renderer {
             border,
             marker,
             marker_rect: None,
+            track,
+            thumb,
+            scrollbar: None,
             shown: None,
             panel: None,
             list: None,
@@ -272,16 +283,16 @@ impl Renderer {
         });
     }
 
-    /// Image ajustée à la fenêtre (sans dépasser 100 %), calée à gauche, centrée verticalement.
+    /// Image ajustée à la zone libre à gauche du panneau (sans dépasser 100 %),
+    /// centrée dans cette zone : un 4:3 paysage la remplit, un portrait est au milieu.
     pub fn image_rect(&self) -> Option<Rect> {
         let s = self.shown.as_ref()?;
         let (ww, wh) = self.window_size();
-        let fit = ((ww - IMAGE_MARGIN) / s.display_w)
-            .min(wh / s.display_h)
-            .min(1.0);
+        let area = (ww - IMAGE_MARGIN - self.panel_width() as f32).max(1.0);
+        let fit = (area / s.display_w).min(wh / s.display_h).min(1.0);
         let (w, h) = (s.display_w * fit, s.display_h * fit);
         Some(Rect {
-            x: IMAGE_MARGIN,
+            x: (IMAGE_MARGIN + (area - w) / 2.0).round(),
             y: ((wh - h) / 2.0).round(),
             w,
             h,
@@ -307,6 +318,13 @@ impl Renderer {
     pub fn set_marker(&mut self, rect: Option<Rect>) -> bool {
         let changed = rect != self.marker_rect;
         self.marker_rect = rect;
+        changed
+    }
+
+    /// Ascenseur (piste, curseur), en pixels écran ; renvoie `true` s'il a changé.
+    pub fn set_scrollbar(&mut self, bar: Option<(Rect, Rect)>) -> bool {
+        let changed = bar != self.scrollbar;
+        self.scrollbar = bar;
         changed
     }
 
@@ -410,6 +428,12 @@ impl Renderer {
         if let Some(r) = self.marker_rect {
             self.place(&self.marker, r, full_src, 1);
             draws.push(&self.marker);
+        }
+        if let Some((track, thumb)) = self.scrollbar {
+            self.place(&self.track, track, full_src, 1);
+            self.place(&self.thumb, thumb, full_src, 1);
+            draws.push(&self.track);
+            draws.push(&self.thumb);
         }
         let mut loupe = false;
         if let Some(s) = &self.shown {
