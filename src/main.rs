@@ -33,6 +33,8 @@ const MARK_DIR: &str = "retenus";
 struct Burst {
     start: usize,
     len: usize,
+    /// Rythme mesuré, en images/s.
+    rate: Option<f32>,
 }
 
 /// Géométrie de l'ascenseur de la liste, en pixels écran.
@@ -372,10 +374,11 @@ impl App {
             Line {
                 text: match self.burst_of.get(self.cur) {
                     Some(&b) => format!(
-                        "Rafale {}   vue {} / {}",
+                        "Rafale {}   vue {} / {}{}",
                         b + 1,
                         self.cur - self.bursts[b].start + 1,
-                        self.bursts[b].len
+                        self.bursts[b].len,
+                        self.bursts[b].rate.map(|r| format!("   {}", panel::format_rate(r))).unwrap_or_default()
                     ),
                     None => String::new(),
                 },
@@ -400,6 +403,18 @@ impl App {
         }
     }
 
+    /// Rythme d'une rafale, en images/s. L'horodatage est à la seconde : le rythme
+    /// n'est exact qu'entre deux changements de seconde, donc pour une rafale qui
+    /// couvre au moins trois secondes distinctes.
+    fn burst_rate(&self, burst: &Burst) -> Option<f32> {
+        let times: Vec<i64> = (burst.start..burst.start + burst.len)
+            .map(|i| self.metas[i].as_ref().and_then(|m| m.time))
+            .collect::<Option<_>>()?;
+        let changes: Vec<usize> = (1..times.len()).filter(|&k| times[k] != times[k - 1]).collect();
+        let (&first, &last) = (changes.first()?, changes.last()?);
+        (last > first).then(|| (last - first) as f32 / (times[last] - times[first]) as f32)
+    }
+
     fn add_meta(&mut self, index: usize, meta: Meta) {
         debug_assert_eq!(index, self.burst_of.len(), "analyse dans l'ordre");
         let continues = index > 0
@@ -411,13 +426,23 @@ impl App {
             _ => self.bursts.push(Burst {
                 start: index,
                 len: 1,
+                rate: None,
             }),
         }
         self.burst_of.push(self.bursts.len() - 1);
         self.metas[index] = Some(meta);
+        let last = self.bursts.last().unwrap();
+        let rate = self.burst_rate(last);
+        self.bursts.last_mut().unwrap().rate = rate;
         self.scanned = index + 1;
         if self.scanned == self.files.len() {
-            log::info!("{} rafales", self.bursts.len());
+            let rates: Vec<f32> = self.bursts.iter().filter_map(|b| b.rate).collect();
+            log::info!(
+                "{} rafales, rythme mesuré pour {} : {:?} i/s",
+                self.bursts.len(),
+                rates.len(),
+                rates.iter().map(|r| format!("{r:.1}")).collect::<std::collections::BTreeSet<_>>()
+            );
         }
     }
 
@@ -458,6 +483,7 @@ impl App {
                 start: b.start,
                 len: b.len,
                 number: i + 1,
+                rate: b.rate,
                 marked: (b.start..b.start + b.len)
                     .filter(|j| self.marked.contains(j))
                     .count(),
