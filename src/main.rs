@@ -419,14 +419,14 @@ impl App {
         };
         let meta = self.metas[self.cur].as_ref();
         let lines = [
-            Line { text: mark, size: 44.0, color: mark_color, gap: 0.0 },
-            Line { text: label.0, size: 22.0, color: label.1, gap: 2.0 },
-            Line { text: name, size: 30.0, color: [230, 230, 230], gap: 20.0 },
+            Line { text: mark, size: 30.0, color: mark_color, gap: 0.0 },
+            Line { text: label.0, size: 16.0, color: label.1, gap: 2.0 },
+            Line { text: name, size: 21.0, color: [230, 230, 230], gap: 14.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
-                size: 24.0,
+                size: 17.0,
                 color: [150, 150, 150],
-                gap: 4.0,
+                gap: 3.0,
             },
             Line {
                 text: match self.burst_of.get(self.cur) {
@@ -439,15 +439,15 @@ impl App {
                     ),
                     None => String::new(),
                 },
-                size: 24.0,
+                size: 17.0,
                 color: [150, 150, 150],
-                gap: 4.0,
+                gap: 3.0,
             },
             Line {
                 text: meta.map(|m| m.exposure.clone()).unwrap_or_default(),
-                size: 24.0,
+                size: 17.0,
                 color: [205, 205, 205],
-                gap: 16.0,
+                gap: 12.0,
             },
             Line {
                 text: meta
@@ -458,11 +458,11 @@ impl App {
                         parts.join("   ·   ")
                     })
                     .unwrap_or_default(),
-                size: 22.0,
+                size: 16.0,
                 color: [150, 150, 150],
-                gap: 4.0,
+                gap: 3.0,
             },
-            Line { text: status.into(), size: 22.0, color: [125, 125, 125], gap: 20.0 },
+            Line { text: status.into(), size: 16.0, color: [125, 125, 125], gap: 14.0 },
         ];
         let key = format!(
             "{width}|{}",

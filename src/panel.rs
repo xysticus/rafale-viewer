@@ -10,10 +10,10 @@ use turbojpeg::{Decompressor, Image, PixelFormat};
 
 use crate::meta::Meta;
 
-pub const PADDING: f32 = 28.0;
+pub const PADDING: f32 = 24.0;
 const THUMBS_PER_ROW: usize = 4;
 const THUMB_GAP: f32 = 8.0;
-const ROW_HEADER: f32 = 32.0;
+const ROW_HEADER: f32 = 25.0;
 const ROW_GAP: f32 = 14.0;
 const HIGHLIGHT: [u8; 4] = [255, 255, 255, 22];
 const MARKED: [u8; 3] = [110, 210, 120];
@@ -195,7 +195,7 @@ impl Panel {
         let mut y = 0.0;
 
         if !status.is_empty() {
-            canvas.text(&font, PADDING, y + 22.0, max_x, status, 20.0, [125, 125, 125]);
+            canvas.text(&font, PADDING, y + 17.0, max_x, status, 15.0, [125, 125, 125]);
             y += ROW_HEADER;
         }
         for row in rows {
@@ -210,10 +210,10 @@ impl Panel {
             let rate = row.rate.map(|r| format!("   {}", format_rate(r))).unwrap_or_default();
             let header = format!("Rafale {}   {clock}   {} images{rate}", row.number, row.len);
             let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
-            canvas.text(&font, PADDING, top + 23.0, max_x, &header, 20.0, color);
+            canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
             if row.marked > 0 {
                 let mark = format!("★ {}", row.marked);
-                canvas.text(&font, width as f32 - PADDING - 50.0, top + 23.0, max_x, &mark, 20.0, MARKED);
+                canvas.text(&font, width as f32 - PADDING - 38.0, top + 18.0, max_x, &mark, 15.0, MARKED);
             }
 
             // Vignettes réparties sur la rafale : première, …, dernière.
