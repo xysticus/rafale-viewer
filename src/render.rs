@@ -20,9 +20,11 @@ const LOUPE_BORDER: f32 = 2.0;
 /// Le panneau occupe la place laissée par une image 4:3 en hauteur pleine.
 const PANEL_ASPECT: f32 = 4.0 / 3.0;
 const PANEL_MIN_WIDTH: f32 = 280.0;
+/// Marge à gauche de l'image.
+const IMAGE_MARGIN: f32 = 24.0;
 const PARAMS_SIZE: u64 = 48;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -70,8 +72,14 @@ pub struct Renderer {
     linear: wgpu::Sampler,
     nearest: wgpu::Sampler,
     border: Quad,
+    /// Repère de position dans la rafale courante (rectangle blanc).
+    marker: Quad,
+    marker_rect: Option<Rect>,
     shown: Option<Shown>,
+    /// Informations sur l'image courante, en haut à droite.
     panel: Option<PanelTex>,
+    /// Liste des rafales, sous les informations.
+    list: Option<PanelTex>,
 }
 
 impl Renderer {
@@ -190,6 +198,8 @@ impl Renderer {
         let nearest = device.create_sampler(&Default::default());
         let border = upload(&device, &queue, &[190, 190, 190, 255], 1, 1);
         let border = make_quad(&device, &layout, &nearest, &border);
+        let white = upload(&device, &queue, &[235, 235, 235, 255], 1, 1);
+        let marker = make_quad(&device, &layout, &nearest, &white);
 
         Renderer {
             window,
@@ -202,8 +212,11 @@ impl Renderer {
             linear,
             nearest,
             border,
+            marker,
+            marker_rect: None,
             shown: None,
             panel: None,
+            list: None,
         }
     }
 
@@ -213,7 +226,7 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    fn window_size(&self) -> (f32, f32) {
+    pub fn window_size(&self) -> (f32, f32) {
         (self.config.width as f32, self.config.height as f32)
     }
 
@@ -263,10 +276,12 @@ impl Renderer {
     pub fn image_rect(&self) -> Option<Rect> {
         let s = self.shown.as_ref()?;
         let (ww, wh) = self.window_size();
-        let fit = (ww / s.display_w).min(wh / s.display_h).min(1.0);
+        let fit = ((ww - IMAGE_MARGIN) / s.display_w)
+            .min(wh / s.display_h)
+            .min(1.0);
         let (w, h) = (s.display_w * fit, s.display_h * fit);
         Some(Rect {
-            x: 0.0,
+            x: IMAGE_MARGIN,
             y: ((wh - h) / 2.0).round(),
             w,
             h,
@@ -276,7 +291,32 @@ impl Renderer {
     /// Largeur du panneau d'informations, à droite de la fenêtre.
     pub fn panel_width(&self) -> u32 {
         let (ww, wh) = self.window_size();
-        (ww - wh * PANEL_ASPECT).max(PANEL_MIN_WIDTH).min(ww) as u32
+        (ww - IMAGE_MARGIN - wh * PANEL_ASPECT)
+            .max(PANEL_MIN_WIDTH)
+            .min(ww) as u32
+    }
+
+    /// Coin haut-gauche de la liste des rafales, en pixels écran.
+    pub fn list_origin(&self) -> (f32, f32) {
+        let (ww, _) = self.window_size();
+        let top = self.panel.as_ref().map_or(0.0, |p| p.height);
+        (ww - self.panel_width() as f32, top)
+    }
+
+    /// Repère de position, en pixels écran ; renvoie `true` s'il a bougé.
+    pub fn set_marker(&mut self, rect: Option<Rect>) -> bool {
+        let changed = rect != self.marker_rect;
+        self.marker_rect = rect;
+        changed
+    }
+
+    pub fn set_list(&mut self, pixels: &[u8], width: u32, height: u32) {
+        let view = self.upload(pixels, width, height);
+        self.list = Some(PanelTex {
+            quad: self.quad(&view, true),
+            width: width as f32,
+            height: height as f32,
+        });
     }
 
     pub fn set_panel(&mut self, pixels: &[u8], width: u32, height: u32) {
@@ -355,6 +395,21 @@ impl Renderer {
             };
             self.place(&p.quad, dst, full_src, 1);
             draws.push(&p.quad);
+        }
+        if let Some(l) = &self.list {
+            let (x, y) = self.list_origin();
+            let dst = Rect {
+                x,
+                y,
+                w: l.width,
+                h: l.height,
+            };
+            self.place(&l.quad, dst, full_src, 1);
+            draws.push(&l.quad);
+        }
+        if let Some(r) = self.marker_rect {
+            self.place(&self.marker, r, full_src, 1);
+            draws.push(&self.marker);
         }
         let mut loupe = false;
         if let Some(s) = &self.shown {
