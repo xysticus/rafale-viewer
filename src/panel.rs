@@ -33,6 +33,8 @@ pub struct Row {
     pub start: usize,
     pub len: usize,
     pub number: usize,
+    /// Rythme mesuré, en images/s.
+    pub rate: Option<f32>,
     pub marked: usize,
     /// Rafale de l'image courante.
     pub current: bool,
@@ -205,7 +207,8 @@ impl Panel {
                 .get(row.start)
                 .and_then(|m| m.as_ref())
                 .map_or("", |m| m.clock.as_str());
-            let header = format!("Rafale {}   {clock}   {} images", row.number, row.len);
+            let rate = row.rate.map(|r| format!("   {}", format_rate(r))).unwrap_or_default();
+            let header = format!("Rafale {}   {clock}   {} images{rate}", row.number, row.len);
             let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
             canvas.text(&font, PADDING, top + 23.0, max_x, &header, 20.0, color);
             if row.marked > 0 {
@@ -268,6 +271,15 @@ impl Panel {
         let t = Arc::new(fit(&orient(src, meta.orientation), tw, th));
         self.thumbs.put((index, tw), t.clone());
         Some(t)
+    }
+}
+
+/// « 25 i/s », ou « 12,5 i/s » si le rythme n'est pas entier.
+pub fn format_rate(rate: f32) -> String {
+    if (rate - rate.round()).abs() < 0.05 {
+        format!("{} i/s", rate.round())
+    } else {
+        format!("{:.1} i/s", rate).replace('.', ",")
     }
 }
 
