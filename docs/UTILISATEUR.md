@@ -96,13 +96,20 @@ Le marquage est enregistré dans un petit fichier à côté de chaque photo marq
 
 **Retenue** veut dire au moins une étoile et pas rejetée. Espace pose une étoile ; les touches 1 à 5 règlent la note précisément.
 
+### Les RAW
+
+Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), dans le même dossier ou dans un sous-dossier direct comme `raw/`, le même marquage est écrit à côté du RAW : `raw/PA290123.ORF.xmp`. Le panneau affiche « RAW : raw/PA290123.ORF », ou « pas de RAW ».
+
+- **Rattrapage :** au lancement, les photos déjà marquées dont le RAW n'a pas encore reçu le marquage sont mises à jour.
+- **Ordre conseillé :** fais le tri **avant** d'importer les RAW dans darktable. Ensuite, darktable crée son propre `.xmp` pour chaque RAW, Rafale ne le modifie plus, et le panneau indique « XMP externe, non synchronisé ».
+
 ### Dans les logiciels de retouche
 
 | Logiciel | Ce qu'il lit | À savoir |
 |---|---|---|
 | darktable | étoiles, rejet, couleur | Importer avec **« ajouter à la bibliothèque »**. « Copier et importer » ignore les `.xmp`. Après l'import, c'est la base de données de darktable qui fait foi. |
 | digiKam | étoiles, couleur, retenue / rejetée | Activer la lecture des sidecars : *Configuration › Métadonnées › Sidecars*. |
-| RawTherapee | au mieux les étoiles | RawTherapee range notes et couleurs dans ses propres fichiers `.pp3`. |
+| RawTherapee (5.11 et plus) | étoiles, couleur (pas le rejet) | Activer la synchronisation des notes et couleurs avec les XMP (Préférences › Navigateur de fichiers). Mettre `XMPSidecarStyle=ext` dans la section `[Metadata]` du fichier `~/.config/RawTherapee/options`, pour qu'il lise `PA290123.ORF.xmp` au lieu de `PA290123.xmp`. Une photo rejetée y apparaît sans étoile. |
 | Lightroom | étoiles, rejet, couleur | Conventions Lightroom respectées (`xmp:Rating`, `xmp:Label`). |
 
 **Le fichier XMP d'un autre logiciel n'est jamais modifié.** C'est le cas par exemple après un import dans darktable, qui y range l'historique de tes retouches. Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.

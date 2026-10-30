@@ -101,6 +101,11 @@ pub fn sidecar(photo: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// Ce XMP existe-t-il et vient-il d'un autre logiciel ?
+pub fn is_foreign(xmp: &Path) -> bool {
+    std::fs::read_to_string(xmp).is_ok_and(|text| !text.contains(CREATOR))
+}
+
 /// Lit le marquage d'une photo (marquage vide s'il n'y a pas de XMP).
 pub fn load(photo: &Path) -> Mark {
     let Ok(text) = std::fs::read_to_string(sidecar(photo)) else {
@@ -124,15 +129,19 @@ pub fn load(photo: &Path) -> Mark {
     }
 }
 
-/// Enregistre le marquage : écrit le XMP, ou le supprime si le marquage est vide.
-/// Refuse de toucher à un XMP d'un autre logiciel.
+/// Enregistre le marquage d'une photo dans son XMP.
 pub fn save(photo: &Path, mark: &Mark) -> std::io::Result<()> {
-    let path = sidecar(photo);
-    if mark.foreign {
+    save_to(&sidecar(photo), mark)
+}
+
+/// Écrit le XMP `path`, ou le supprime si le marquage est vide.
+/// Refuse de toucher à un XMP d'un autre logiciel (vérifié sur le disque).
+pub fn save_to(path: &Path, mark: &Mark) -> std::io::Result<()> {
+    if mark.foreign || is_foreign(path) {
         return Err(std::io::Error::other("XMP d'un autre logiciel, non modifié"));
     }
     if mark.is_empty() {
-        return match std::fs::remove_file(&path) {
+        return match std::fs::remove_file(path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         };
@@ -171,7 +180,7 @@ pub fn save(photo: &Path, mark: &Mark) -> std::io::Result<()> {
     // Écriture atomique : fichier temporaire puis renommage.
     let tmp = path.with_extension("xmp.tmp");
     std::fs::write(&tmp, xml)?;
-    std::fs::rename(&tmp, &path)
+    std::fs::rename(&tmp, path)
 }
 
 /// Valeur d'une propriété XMP, en attribut (`nom="v"`) ou en élément (`<nom>v</nom>`).
@@ -227,6 +236,18 @@ mod tests {
         mark.rating = 1;
         assert!(save(&photo, &mark).is_err());
         assert_eq!(std::fs::read_to_string(sidecar(&photo)).unwrap(), foreign);
+    }
+
+    #[test]
+    fn protection_verifiee_sur_disque() {
+        // Un XMP étranger apparu après le chargement (import darktable…) n'est pas écrasé.
+        let photo = temp_photo("disque");
+        let xmp = sidecar(&photo);
+        std::fs::write(&xmp, "<darktable/>").unwrap();
+        let mark = Mark { rating: 2, ..Default::default() };
+        assert!(save_to(&xmp, &mark).is_err());
+        assert!(save_to(&xmp, &Mark::default()).is_err(), "ni supprimé");
+        assert_eq!(std::fs::read_to_string(&xmp).unwrap(), "<darktable/>");
     }
 
     #[test]

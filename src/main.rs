@@ -1,5 +1,6 @@
 mod loader;
 mod marks;
+mod raw;
 mod meta;
 mod panel;
 mod render;
@@ -55,6 +56,9 @@ const SCROLLBAR_GRAB: f32 = 8.0;
 struct App {
     files: Arc<Vec<PathBuf>>,
     marks: Vec<Mark>,
+    /// RAW associé à chaque JPEG (même nom), et si son XMP appartient à un autre logiciel.
+    raws: Vec<Option<PathBuf>>,
+    raw_foreign: Vec<bool>,
     proxy: EventLoopProxy<()>,
     loader: Option<Loader>,
     reduced: LruCache<usize, Arc<Decoded>>,
@@ -123,12 +127,16 @@ impl App {
                     Mark::default()
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let raws = raw::find(&dir, &files);
+        let raw_foreign = sync_raws(&marks, &raws);
         let now = Instant::now();
         App {
             metas: (0..files.len()).map(|_| None).collect(),
             files,
             marks,
+            raws,
+            raw_foreign,
             proxy,
             loader: None,
             reduced: LruCache::new(NonZeroUsize::new(64).unwrap()),
@@ -361,6 +369,14 @@ impl App {
         if let Err(e) = marks::save(&self.files[self.cur], mark) {
             log::error!("{} : {e}", marks::sidecar(&self.files[self.cur]).display());
         }
+        // Même marquage sur le RAW, s'il y en a un.
+        if let Some(raw) = &self.raws[self.cur] {
+            let xmp = marks::sidecar(raw);
+            if let Err(e) = marks::save_to(&xmp, mark) {
+                log::warn!("{} : {e}", xmp.display());
+                self.raw_foreign[self.cur] = marks::is_foreign(&xmp);
+            }
+        }
     }
 
     /// Chiffre = nombre d'étoiles (0 efface) ; annule un rejet.
@@ -418,10 +434,23 @@ impl App {
             _ => "chargement…",
         };
         let meta = self.metas[self.cur].as_ref();
+        let raw_text = match &self.raws[self.cur] {
+            Some(raw) => {
+                let folder = self.files[self.cur].parent().unwrap_or(Path::new(""));
+                let rel = raw.strip_prefix(folder).unwrap_or(raw).display();
+                if self.raw_foreign[self.cur] {
+                    format!("RAW : {rel}   (XMP externe, non synchronisé)")
+                } else {
+                    format!("RAW : {rel}")
+                }
+            }
+            None => "pas de RAW".to_string(),
+        };
         let lines = [
             Line { text: mark, size: 30.0, color: mark_color, gap: 0.0 },
             Line { text: label.0, size: 16.0, color: label.1, gap: 2.0 },
             Line { text: name, size: 21.0, color: [230, 230, 230], gap: 14.0 },
+            Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 3.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
                 size: 17.0,
@@ -866,6 +895,36 @@ impl ApplicationHandler for App {
         // Arrête les threads de décodage avant de libérer le GPU.
         self.loader = None;
     }
+}
+
+/// Recopie le marquage de chaque JPEG dans le XMP de son RAW (rattrapage au
+/// démarrage). Renvoie, pour chaque fichier, si le XMP du RAW vient d'un autre logiciel.
+fn sync_raws(marks: &[Mark], raws: &[Option<PathBuf>]) -> Vec<bool> {
+    let mut synced = 0;
+    let foreign = marks
+        .iter()
+        .zip(raws)
+        .map(|(mark, raw)| {
+            let Some(raw) = raw else { return false };
+            let xmp = marks::sidecar(raw);
+            if marks::is_foreign(&xmp) {
+                return true;
+            }
+            // Un JPEG marqué par un autre logiciel n'est pas recopié.
+            if !mark.foreign && (*mark != Mark::default() || xmp.exists()) {
+                match marks::save_to(&xmp, mark) {
+                    Ok(()) => synced += 1,
+                    Err(e) => log::warn!("{} : {e}", xmp.display()),
+                }
+            }
+            false
+        })
+        .collect();
+    log::info!(
+        "{} RAW trouvés, {synced} XMP de RAW synchronisés",
+        raws.iter().flatten().count()
+    );
+    foreign
 }
 
 fn list_jpegs(dir: &Path) -> std::io::Result<Vec<PathBuf>> {

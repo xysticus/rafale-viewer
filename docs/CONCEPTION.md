@@ -37,6 +37,7 @@ Les threads réveillent la boucle winit par `EventLoopProxy::send_event(())`. Le
 | `meta.rs` | analyse des en-têtes EXIF et de la MakerNote en arrière-plan |
 | `panel.rs` | rendu CPU du panneau (texte fontdue, vignettes) |
 | `marks.rs` | lecture et écriture des XMP |
+| `raw.rs` | association de chaque JPEG à son RAW |
 | `examples/bench.rs` | banc de mesure lecture disque / décodage |
 
 ## 3. Défilé
@@ -179,6 +180,18 @@ Règles :
 Les fichiers produits ont été validés avec `exiv2 -px`, qui lit les 5 champs. Les tests unitaires de `marks.rs` couvrent l'aller-retour, la suppression et la protection d'un XMP étranger. Non testé : l'import réel dans darktable et digiKam.
 
 Abandonné : la copie des photos retenues dans `retenus/`, remplacée par le XMP. Les anciens dossiers `retenus/` ne sont plus lus.
+
+### 8.1 Report sur les RAW
+
+`raw::find` cherche, pour chaque JPEG, un fichier de **même nom** avec une extension RAW. Il regarde d'abord dans le dossier des JPEG, puis dans ses sous-dossiers directs, ce qui fait une lecture de dossier chacun. Quand un même nom existe aux deux endroits, le dossier des JPEG l'emporte.
+
+- Chaque marquage est écrit dans `PHOTO.JPG.xmp` **et** dans `RAW.EXT.xmp`, avec un contenu identique. Le JPEG fait foi.
+- Au démarrage, `sync_raws` recopie les marquages des JPEG vers les RAW (rattrapage), et supprime un XMP de RAW à nous dont le JPEG n'est plus marqué. Un JPEG marqué par un autre logiciel n'est pas recopié.
+- La protection est vérifiée **sur le disque au moment d'écrire** (`save_to` → `is_foreign`), pas d'après un état mémorisé au chargement. Un XMP créé entre-temps par darktable n'est donc pas écrasé.
+- **Nommage :** on garde le nom complet, `RAW.ORF.xmp`, partout. Le nom de base (`RAW.xmp`, convention Lightroom, ACDSee et RawTherapee par défaut) est ambigu quand JPEG et RAW partagent un dossier. Il entrerait aussi en conflit avec les `.xmp` d'ACDSee des anciennes séances.
+- **RawTherapee** (lu dans son code source, branche dev) : il lit `xmp:Rating` (borné à 0-5, donc sans rejet) et `xmp:Label` (`Red`… `Purple`). Il faut activer `ThumbnailRankColorMode=xmp`, et `XMPSidecarStyle=ext` pour le nom complet. Son rejet (« corbeille ») n'existe que dans le `.pp3`.
+
+Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vues isolées ont été prises en JPEG seul.
 
 ## 9. Interactions et clavier
 
