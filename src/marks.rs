@@ -6,7 +6,8 @@
 //! - `digiKam:PickLabel` (1 = rejetée, 3 = acceptée) et `digiKam:ColorLabel`.
 //!
 //! Un XMP écrit par un autre logiciel (darktable y range son historique de
-//! retouches, par exemple) est lu mais jamais réécrit.
+//! retouches, par exemple) est lu mais jamais réécrit, sauf s'il est vierge :
+//! ni note, ni couleur, ni retouche, comme ceux que darktable pose à l'import.
 
 use std::path::{Path, PathBuf};
 
@@ -75,7 +76,7 @@ pub struct Mark {
     pub rating: u8,
     pub rejected: bool,
     pub color: Option<Color>,
-    /// XMP écrit par un autre logiciel : lecture seule.
+    /// XMP écrit par un autre logiciel, et non vierge : lecture seule.
     pub foreign: bool,
 }
 
@@ -123,9 +124,56 @@ pub fn sidecar(photo: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Ce XMP existe-t-il et vient-il d'un autre logiciel ?
+/// Ce XMP existe-t-il et vient-il d'un autre logiciel, avec un contenu à préserver ?
 pub fn is_foreign(xmp: &Path) -> bool {
-    std::fs::read_to_string(xmp).is_ok_and(|text| !text.contains(CREATOR))
+    std::fs::read_to_string(xmp).is_ok_and(|text| protected(&text))
+}
+
+/// Ce XMP est-il l'un des nôtres ?
+pub fn is_ours(xmp: &Path) -> bool {
+    std::fs::read_to_string(xmp).is_ok_and(|text| text.contains(CREATOR))
+}
+
+/// XMP d'un autre logiciel qui contient autre chose que du vide.
+fn protected(text: &str) -> bool {
+    !text.contains(CREATOR) && !blank(text)
+}
+
+/// XMP étranger vierge : rien qu'on perdrait en le remplaçant. Tout ce qui
+/// n'est pas reconnu comme vide (titre, retouches Lightroom, historique
+/// digiKam, mots-clés posés à la main…) compte comme du contenu.
+fn blank(text: &str) -> bool {
+    let zero = |name| value(text, name).is_none_or(|v| v.trim() == "0");
+    let none = |name| value(text, name).is_none_or(|v| v.trim().is_empty());
+    let keywords_auto = section(text, "lr:hierarchicalSubject")
+        .is_none_or(|s| items(s).all(|k| k.starts_with("darktable|")));
+    zero("xmp:Rating")
+        && none("xmp:Label")
+        && zero("digiKam:ColorLabel")
+        && zero("digiKam:PickLabel")
+        && zero("darktable:history_end")
+        && section(text, "darktable:history").is_none_or(|s| items(s).next().is_none())
+        && keywords_auto
+        && ["crs:", "digiKam:ImageHistory", "<dc:title", "<dc:description", "<dc:rights"]
+            .iter()
+            .all(|k| !text.contains(k))
+}
+
+/// Contenu d'un élément `<nom>…</nom>`.
+fn section<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let open = format!("<{name}>");
+    let close = format!("</{name}>");
+    let i = text.find(&open)? + open.len();
+    let j = text[i..].find(&close)?;
+    Some(&text[i..i + j])
+}
+
+/// Valeurs des `<rdf:li>` d'une liste.
+fn items(list: &str) -> impl Iterator<Item = &str> {
+    list.split("<rdf:li").skip(1).filter_map(|s| {
+        let s = &s[s.find('>')? + 1..];
+        s.find('<').map(|j| s[..j].trim())
+    })
 }
 
 /// Lit le marquage d'une photo (marquage vide s'il n'y a pas de XMP).
@@ -147,7 +195,7 @@ pub fn load(photo: &Path) -> Mark {
         rating: rating.clamp(0, 5) as u8,
         rejected: rating < 0 || pick == Some(1),
         color,
-        foreign: !text.contains(CREATOR),
+        foreign: protected(&text),
     }
 }
 
@@ -156,13 +204,17 @@ pub fn save(photo: &Path, mark: &Mark) -> std::io::Result<()> {
     save_to(&sidecar(photo), mark)
 }
 
-/// Écrit le XMP `path`, ou le supprime si le marquage est vide.
-/// Refuse de toucher à un XMP d'un autre logiciel (vérifié sur le disque).
+/// Écrit le XMP `path`, ou supprime le nôtre si le marquage est vide.
+/// Refuse de toucher à un XMP d'un autre logiciel qui n'est pas vierge
+/// (vérifié sur le disque) ; un XMP étranger vierge est remplacé, jamais supprimé.
 pub fn save_to(path: &Path, mark: &Mark) -> std::io::Result<()> {
     if mark.foreign || is_foreign(path) {
         return Err(std::io::Error::other("XMP d'un autre logiciel, non modifié"));
     }
     if mark.is_empty() {
+        if !is_ours(path) {
+            return Ok(());
+        }
         return match std::fs::remove_file(path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -283,11 +335,45 @@ mod tests {
         // Un XMP étranger apparu après le chargement (import darktable…) n'est pas écrasé.
         let photo = temp_photo("disque");
         let xmp = sidecar(&photo);
-        std::fs::write(&xmp, "<darktable/>").unwrap();
+        std::fs::write(&xmp, r#"<darktable xmp:Rating="3"/>"#).unwrap();
         let mark = Mark { rating: 2, ..Default::default() };
         assert!(save_to(&xmp, &mark).is_err());
         assert!(save_to(&xmp, &Mark::default()).is_err(), "ni supprimé");
-        assert_eq!(std::fs::read_to_string(&xmp).unwrap(), "<darktable/>");
+        assert_eq!(std::fs::read_to_string(&xmp).unwrap(), r#"<darktable xmp:Rating="3"/>"#);
+    }
+
+    #[test]
+    fn xmp_darktable_vierge_remplace() {
+        let photo = temp_photo("vierge");
+        let xmp = sidecar(&photo);
+        let vierge = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description
+   xmp:Rating="0" darktable:history_end="0">
+   <darktable:history><rdf:Seq/></darktable:history>
+   <dc:subject><rdf:Bag><rdf:li>darktable</rdf:li><rdf:li>format</rdf:li></rdf:Bag></dc:subject>
+   <lr:hierarchicalSubject><rdf:Bag><rdf:li>darktable|format|jpg</rdf:li></rdf:Bag></lr:hierarchicalSubject>
+  </rdf:Description></rdf:RDF></x:xmpmeta>"#;
+        std::fs::write(&xmp, vierge).unwrap();
+        assert!(!load(&photo).foreign);
+        // Marquage vide : le fichier vierge est laissé tel quel.
+        save(&photo, &Mark::default()).unwrap();
+        assert_eq!(std::fs::read_to_string(&xmp).unwrap(), vierge);
+        let mark = Mark { rating: 2, ..Default::default() };
+        save(&photo, &mark).unwrap();
+        assert_eq!(load(&photo), mark);
+        assert!(is_ours(&xmp));
+
+        // Le moindre contenu le protège.
+        for extra in [
+            r#"xmp:Rating="1""#,
+            r#"xmp:Label="Red""#,
+            r#"darktable:history_end="3""#,
+            "<lr:hierarchicalSubject><rdf:Bag><rdf:li>chevaux|Pastré</rdf:li></rdf:Bag></lr:hierarchicalSubject>",
+            r#"<dc:title><rdf:Alt><rdf:li xml:lang="x-default">Titre</rdf:li></rdf:Alt></dc:title>"#,
+        ] {
+            let text = format!("<x:xmpmeta {extra}></x:xmpmeta>");
+            assert!(!blank(&text), "{extra}");
+        }
+        assert!(!blank("<darktable:history><rdf:Seq><rdf:li darktable:operation=\"exposure\"/></rdf:Seq></darktable:history>"));
     }
 
     #[test]

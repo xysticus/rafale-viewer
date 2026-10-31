@@ -173,11 +173,12 @@ Règles :
 
 - **Retenue ⇔ au moins une étoile et pas rejetée.** Espace bascule entre 0 et 1 étoile.
 - Un marquage vide **supprime** notre XMP. L'écriture est atomique (fichier `.tmp`, puis renommage).
-- **Un XMP sans notre signature est en lecture seule** (`Mark::foreign`). C'est le cas, par exemple, du sidecar de darktable, qui contient l'historique des retouches.
+- **Un XMP sans notre signature est en lecture seule** (`Mark::foreign`) s'il contient quelque chose. C'est le cas, par exemple, du sidecar de darktable, qui contient l'historique des retouches.
+- **Exception : un XMP étranger vierge** (`blank`) est remplacé dès qu'on marque la photo, jamais supprimé. Vierge veut dire : pas de note, de couleur, d'élément ou de rejet ; un historique darktable vide (`history_end="0"`, pas de `rdf:li`) ; uniquement les mots-clés automatiques `darktable|…` ; ni `crs:` (Lightroom), ni `digiKam:ImageHistory`, ni titre, description ou droits. Tout ce qui n'est pas reconnu compte comme du contenu. Raison : darktable pose un tel fichier pour chaque photo à l'import, ce qui bloquait le tri de toute la séance.
 - Lecture tolérante : attributs (`nom="v"`) ou éléments (`<nom>v</nom>`), `xmp:Label` prioritaire sur `digiKam:ColorLabel`.
 - darktable donne priorité à `xmp:Label` sur `darktable:colorlabels` (vérifié dans `exif.cc`), qu'il n'est donc pas nécessaire d'écrire.
 
-Les fichiers produits ont été validés avec `exiv2 -px`, qui lit les 5 champs. Les tests unitaires de `marks.rs` couvrent l'aller-retour, la suppression et la protection d'un XMP étranger. Non testé : l'import réel dans darktable et digiKam.
+Les fichiers produits ont été validés avec `exiv2 -px`, qui lit les 5 champs. Les tests unitaires de `marks.rs` couvrent l'aller-retour, la suppression, la protection d'un XMP étranger et le remplacement d'un XMP étranger vierge. Non testé : l'import réel dans darktable et digiKam.
 
 Abandonné : la copie des photos retenues dans `retenus/`, remplacée par le XMP. Les anciens dossiers `retenus/` ne sont plus lus.
 
