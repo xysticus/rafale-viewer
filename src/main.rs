@@ -531,13 +531,6 @@ impl App {
         } else {
             ("Non retenue".to_string(), [105, 105, 105])
         };
-        let status = match self.shown {
-            Some(Job { index, quality: Quality::Full }) if index == self.cur => {
-                "100 % : loupe sous le pointeur"
-            }
-            Some(Job { index, .. }) if index == self.cur => "aperçu réduit",
-            _ => "chargement…",
-        };
         let meta = self.metas[self.cur].as_ref();
         let raw_text = match &self.raws[self.cur] {
             Some(raw) => {
@@ -554,7 +547,26 @@ impl App {
         let lines = [
             Line { text: mark, size: 16.0, color: mark_color, gap: 0.0 },
             Line { text: name, size: 21.0, color: [230, 230, 230], gap: 12.0 },
-            Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 3.0 },
+            Line {
+                text: meta.map(|m| m.exposure.clone()).unwrap_or_default(),
+                size: 17.0,
+                color: [205, 205, 205],
+                gap: 4.0,
+            },
+            Line {
+                text: meta
+                    .map(|m| {
+                        let mut parts = Vec::new();
+                        parts.extend(m.picture_mode.clone());
+                        parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
+                        parts.join("   ·   ")
+                    })
+                    .unwrap_or_default(),
+                size: 16.0,
+                color: [150, 150, 150],
+                gap: 3.0,
+            },
+            Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 12.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
                 size: 17.0,
@@ -576,26 +588,6 @@ impl App {
                 color: [150, 150, 150],
                 gap: 3.0,
             },
-            Line {
-                text: meta.map(|m| m.exposure.clone()).unwrap_or_default(),
-                size: 17.0,
-                color: [205, 205, 205],
-                gap: 12.0,
-            },
-            Line {
-                text: meta
-                    .map(|m| {
-                        let mut parts = Vec::new();
-                        parts.extend(m.picture_mode.clone());
-                        parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
-                        parts.join("   ·   ")
-                    })
-                    .unwrap_or_default(),
-                size: 16.0,
-                color: [150, 150, 150],
-                gap: 3.0,
-            },
-            Line { text: status.into(), size: 16.0, color: [125, 125, 125], gap: 14.0 },
         ];
         let key = format!(
             "{width}|{controls:?}|{}",
@@ -670,7 +662,9 @@ impl App {
         } else {
             String::new()
         };
-        let header = panel::FILTER_BAR + if status.is_empty() { 0.0 } else { panel::PADDING };
+        // Ligne d'état en haut (pendant l'analyse), barre de filtre en bas.
+        let status_h = if status.is_empty() { 0.0 } else { panel::PADDING };
+        let header = panel::FILTER_BAR + status_h;
         let fit = ((height as f32 - header) / Panel::row_height(width)).max(0.0) as isize;
 
         // Rafales listées : celles qui ont au moins une image visible.
@@ -766,7 +760,7 @@ impl App {
         // Ascenseur, seulement si toutes les rafales ne tiennent pas.
         let total = listed.len() as f32;
         self.scrollbar = (fit > 0 && listed.len() > fit as usize).then(|| {
-            let top = ly + header;
+            let top = ly + status_h;
             let h = fit as f32 * Panel::row_height(width);
             let x = lx + width as f32 - panel::PADDING / 2.0 + 2.0;
             let thumb_h = (h * fit as f32 / total).max(24.0);

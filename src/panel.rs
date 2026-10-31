@@ -364,7 +364,9 @@ impl Panel {
         let mut canvas = Canvas::new(width, height.max(1));
         let mut hits = Vec::with_capacity(rows.len());
         let mut track = None;
-        let mut filter_hits = canvas.controls(PADDING, 6.0, filter);
+        // Barre de filtre en bas de la liste.
+        let bar = height as f32 - FILTER_BAR;
+        let mut filter_hits = canvas.controls(PADDING, bar + 10.0, filter);
         let Some(font) = self.font.take() else {
             return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, filter_hits, track };
         };
@@ -376,16 +378,16 @@ impl Panel {
         let after = filter_hits.last().map_or(PADDING, |h| h.x + h.w) + 16.0;
         let active = filter != &Controls::default();
         let color = if active { [215, 215, 215] } else { [120, 120, 120] };
-        canvas.text(&font, after, 6.0 + 16.0, max_x, filter_text, 15.0, color);
+        canvas.text(&font, after, bar + 10.0 + 16.0, max_x, filter_text, 15.0, color);
         if active {
             let label = "effacer";
             let w = 56.0;
             let x = width as f32 - PADDING - w;
-            canvas.text(&font, x, 6.0 + 16.0, max_x, label, 15.0, [150, 150, 150]);
-            filter_hits.push(Hit { widget: Widget::ClearFilter, x, y: 0.0, w, h: FILTER_BAR });
+            canvas.text(&font, x, bar + 10.0 + 16.0, max_x, label, 15.0, [150, 150, 150]);
+            filter_hits.push(Hit { widget: Widget::ClearFilter, x, y: bar, w, h: FILTER_BAR });
         }
-        canvas.rect(PADDING / 2.0, FILTER_BAR - 4.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
-        let mut y = FILTER_BAR;
+        canvas.rect(PADDING / 2.0, bar + 2.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
+        let mut y = 0.0;
 
         if !status.is_empty() {
             canvas.text(&font, PADDING, y + 17.0, max_x, status, 15.0, [125, 125, 125]);
