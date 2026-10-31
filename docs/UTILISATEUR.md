@@ -104,7 +104,7 @@ Le marquage est enregistré dans un petit fichier à côté de chaque photo marq
 Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), dans le même dossier ou dans un sous-dossier direct comme `raw/`, le même marquage est écrit à côté du RAW : `raw/PA290123.ORF.xmp`. Le panneau affiche « RAW : raw/PA290123.ORF », ou « pas de RAW ».
 
 - **Rattrapage :** au lancement, les photos déjà marquées dont le RAW n'a pas encore reçu le marquage sont mises à jour.
-- **Ordre conseillé :** fais le tri **avant** d'importer les RAW dans darktable. Ensuite, darktable crée son propre `.xmp` pour chaque RAW, Rafale ne le modifie plus, et le panneau indique « XMP externe, non synchronisé ».
+- **Ordre conseillé :** fais le tri **avant** d'importer les RAW dans darktable. Dès que tu retouches une photo dans darktable, son `.xmp` contient l'historique : Rafale ne le modifie plus, et le panneau indique « XMP externe, non synchronisé ».
 
 ### Dans les logiciels de retouche
 
@@ -115,7 +115,9 @@ Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), d
 | RawTherapee (5.11 et plus) | étoiles, couleur (pas le rejet) | Activer la synchronisation des notes et couleurs avec les XMP (Préférences › Navigateur de fichiers). Mettre `XMPSidecarStyle=ext` dans la section `[Metadata]` du fichier `options` de RawTherapee (version Flatpak : `~/.var/app/com.rawtherapee.RawTherapee/config/RawTherapee/options` ; paquet classique : `~/.config/RawTherapee/options`), RawTherapee fermé, pour qu'il lise `PA290123.ORF.xmp` au lieu de `PA290123.xmp`. Une photo rejetée y apparaît sans étoile. |
 | Lightroom | étoiles, rejet, couleur | Conventions Lightroom respectées (`xmp:Rating`, `xmp:Label`). |
 
-**Le fichier XMP d'un autre logiciel n'est jamais modifié.** C'est le cas par exemple après un import dans darktable, qui y range l'historique de tes retouches. Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.
+**Le fichier XMP d'un autre logiciel n'est pas modifié s'il contient quelque chose** : une note, une couleur, un historique de retouches darktable, un titre, des mots-clés… Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.
+
+Un XMP **vierge** d'un autre logiciel, comme ceux que darktable crée pour chaque photo à l'import, est remplacé par celui de Rafale dès que tu marques la photo. Tant que tu ne la marques pas, Rafale n'y touche pas. Tu peux donc essayer un autre logiciel sur une séance sans t'empêcher d'y trier ensuite. darktable ne relit pas tout seul les `.xmp` modifiés : utilise sa commande de relecture des sidecars.
 
 ## Rafales et réglages de l'appareil
 

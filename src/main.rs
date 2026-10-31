@@ -1052,7 +1052,7 @@ fn sync_raws(marks: &[Mark], raws: &[Option<PathBuf>]) -> Vec<bool> {
                 return true;
             }
             // Un JPEG marqué par un autre logiciel n'est pas recopié.
-            if !mark.foreign && (*mark != Mark::default() || xmp.exists()) {
+            if !mark.foreign && (*mark != Mark::default() || marks::is_ours(&xmp)) {
                 match marks::save_to(&xmp, mark) {
                     Ok(()) => synced += 1,
                     Err(e) => log::warn!("{} : {e}", xmp.display()),
