@@ -33,7 +33,8 @@ rafale-viewer ~/Images/2026-10-29
 
 ```
 ┌──────────────────────────────────────┬──────────────────────┐
-│                                      │ ★★★  Retenue         │
+│                                      │ ★★★☆☆ ■■■■■ [✓] [✕] │
+│                                      │ Retenue              │
 │                                      │ Étiquette rouge      │
 │                                      │ PA290123.JPG         │
 │              photo                   │ 123 / 2355           │
@@ -86,7 +87,9 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend deux 
 ## Souris
 
 - **Loupe 100 %.** À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
-- **Clic sur une ligne de la liste :** affiche la première photo de cette rafale.
+- **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X.
+- **Barre de filtre en haut de la liste** (mêmes commandes) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. « effacer » supprime le filtre. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
+- **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre).
 - **Molette au-dessus du panneau :** fait défiler la liste. Elle se recentre dès que tu changes de rafale.
 - **Ascenseur à droite de la liste :** tu peux le faire glisser. Un clic sur la piste y amène directement le curseur.
 

@@ -195,6 +195,9 @@ Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vu
 
 ## 9. Interactions et clavier
 
+- **Commandes cliquables** (`panel.rs`) : étoiles, pastilles de couleur, cases ✓ et ✕, dessinées en vectoriel sur le canevas CPU (anticrénelage 4 × 4, composition alpha) plutôt qu'avec des glyphes : Noto Sans n'a pas « ★ ». Le rendu renvoie leurs zones (`Hit`), testées au clic : marquage relativement au panneau, filtre relativement à la liste.
+- **Filtre** (`marks::Filter`) : note minimale, couleurs (ou), retenue / rejetée (ou), critères cumulés (et). `App::visible` (indices triés) est recalculé à chaque changement de filtre ou de marquage (O(n)). `App::neighbor(from, dir, k)` (recherche dichotomique) sert au défilé, au préchargement, à ↑/↓, Début/Fin ; la liste ne montre que les rafales ayant des images visibles, avec leurs vignettes choisies parmi celles-ci.
+
 - **Lettres** (`f`, `q`, `x`, `r`) : lues par touche **logique**, pour fonctionner en AZERTY.
 - **Flèches, chiffres, F1-F5, F11, Espace** : lus par position **physique**. La rangée des chiffres marche donc sans Maj en AZERTY.
 - **Clic dans la liste :** test sur les zones `list_hits` renvoyées par le rendu de la liste, relatives à `list_origin()`.

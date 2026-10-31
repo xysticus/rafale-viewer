@@ -18,9 +18,9 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
-use marks::{Color, Mark};
+use marks::{Color, Filter, Mark};
 use meta::Meta;
-use panel::{Line, Panel, Row};
+use panel::{Controls, Hit, Line, Panel, Row, Widget};
 use render::{Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -28,7 +28,7 @@ const HOLD_DELAY: Duration = Duration::from_millis(300);
 /// Temps d'arrêt sur une image avant de lancer le décodage pleine résolution.
 const FULL_DELAY: Duration = Duration::from_millis(100);
 /// Préchargement en résolution réduite de part et d'autre de l'image courante.
-const PREFETCH: isize = 10;
+const PREFETCH: usize = 10;
 const DEFAULT_FPS: f64 = 25.0;
 
 struct Burst {
@@ -59,6 +59,9 @@ struct App {
     /// RAW associé à chaque JPEG (même nom), et si son XMP appartient à un autre logiciel.
     raws: Vec<Option<PathBuf>>,
     raw_foreign: Vec<bool>,
+    /// Filtre de navigation, et images qui le passent (triées ; vide sans filtre).
+    filter: Filter,
+    visible: Vec<usize>,
     proxy: EventLoopProxy<()>,
     loader: Option<Loader>,
     reduced: LruCache<usize, Arc<Decoded>>,
@@ -98,8 +101,11 @@ struct App {
     list_offset: isize,
     list_burst: Option<usize>,
     list_key: String,
-    /// Zones cliquables de la liste : (début de rafale, haut, bas), relatives à la liste.
+    /// Zones cliquables de la liste : (image à afficher, haut, bas), relatives à la liste.
     list_hits: Vec<(usize, f32, f32)>,
+    /// Commandes cliquables : marquage (relatives au panneau) et filtre (relatives à la liste).
+    info_hits: Vec<Hit>,
+    filter_hits: Vec<Hit>,
     list_track: Option<(f32, f32, f32)>,
     scrollbar: Option<Scrollbar>,
     /// Glissement de l'ascenseur en cours : décalage du pointeur dans le curseur.
@@ -137,6 +143,8 @@ impl App {
             marks,
             raws,
             raw_foreign,
+            filter: Filter::default(),
+            visible: Vec::new(),
             proxy,
             loader: None,
             reduced: LruCache::new(NonZeroUsize::new(64).unwrap()),
@@ -165,6 +173,8 @@ impl App {
             list_burst: None,
             list_key: String::new(),
             list_hits: Vec::new(),
+            info_hits: Vec::new(),
+            filter_hits: Vec::new(),
             list_track: None,
             scrollbar: None,
             dragging: None,
@@ -175,6 +185,53 @@ impl App {
 
     fn is_ready(&self, i: usize) -> bool {
         self.reduced.contains(&i) || self.full.contains(&i)
+    }
+
+    /// Recalcule les images qui passent le filtre (après un changement de filtre ou de marquage).
+    fn refresh_visible(&mut self) {
+        self.visible = if self.filter.active() {
+            (0..self.files.len())
+                .filter(|&i| self.filter.matches(&self.marks[i]))
+                .collect()
+        } else {
+            Vec::new()
+        };
+    }
+
+    /// `k`-ième image visible après (`dir` = 1) ou avant (`dir` = -1) l'image `from`.
+    fn neighbor(&self, from: usize, dir: isize, k: usize) -> Option<usize> {
+        if !self.filter.active() {
+            return from
+                .checked_add_signed(dir * k as isize)
+                .filter(|&i| i < self.files.len());
+        }
+        if dir > 0 {
+            let pos = self.visible.partition_point(|&v| v <= from);
+            self.visible.get(pos + k - 1).copied()
+        } else {
+            let pos = self.visible.partition_point(|&v| v < from);
+            pos.checked_sub(k).map(|p| self.visible[p])
+        }
+    }
+
+    fn first_visible_in(&self, start: usize, len: usize) -> Option<usize> {
+        if self.filter.active() {
+            visible_in(&self.visible, start, len).first().copied()
+        } else {
+            (len > 0).then_some(start)
+        }
+    }
+
+    /// Change le filtre ; si l'image courante n'y répond plus, va à la plus proche qui y répond.
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
+        self.refresh_visible();
+        if self.filter.active() && self.visible.binary_search(&self.cur).is_err() {
+            if let Some(i) = self.neighbor(self.cur, 1, 1).or_else(|| self.neighbor(self.cur, -1, 1)) {
+                self.jump(i, Instant::now());
+            }
+        }
+        self.list_offset = 0;
     }
 
     fn on_key(&mut self, event: &KeyEvent, event_loop: &ActiveEventLoop) {
@@ -213,8 +270,18 @@ impl App {
             }
             KeyCode::ArrowUp if pressed => self.burst_step(-1, now),
             KeyCode::ArrowDown if pressed => self.burst_step(1, now),
-            KeyCode::Home if pressed => self.jump(0, now),
-            KeyCode::End if pressed => self.jump(self.files.len() - 1, now),
+            KeyCode::Home if pressed => {
+                if let Some(i) = self.first_visible_in(0, self.files.len()) {
+                    self.jump(i, now);
+                }
+            }
+            KeyCode::End if pressed => {
+                let last = self.files.len() - 1;
+                let target = if self.filter.active() { self.visible.last().copied() } else { Some(last) };
+                if let Some(i) = target {
+                    self.jump(i, now);
+                }
+            }
             KeyCode::Space if pressed => self.edit_mark(|m| {
                 m.rating = if m.retained() { 0 } else { 1 };
                 m.rejected = false;
@@ -261,13 +328,18 @@ impl App {
         }
     }
 
-    /// Début de la rafale précédente ou suivante.
+    /// Début de la rafale précédente ou suivante (qui a des images visibles).
     fn burst_step(&mut self, dir: isize, now: Instant) {
         let Some(&b) = self.burst_of.get(self.cur) else {
             return;
         };
-        if let Some(target) = b.checked_add_signed(dir).and_then(|t| self.bursts.get(t)) {
-            self.jump(target.start, now);
+        let mut t = b;
+        while let Some(next) = t.checked_add_signed(dir).filter(|&n| n < self.bursts.len()) {
+            t = next;
+            let burst = &self.bursts[t];
+            if let Some(i) = self.first_visible_in(burst.start, burst.len) {
+                return self.jump(i, now);
+            }
         }
     }
 
@@ -287,11 +359,7 @@ impl App {
         } else {
             return;
         };
-        let Some(target) = self
-            .cur
-            .checked_add_signed(dir)
-            .filter(|&t| t < self.files.len())
-        else {
+        let Some(target) = self.neighbor(self.cur, dir, 1) else {
             self.pending = 0;
             return;
         };
@@ -320,14 +388,10 @@ impl App {
 
     /// Tâches de décodage voulues, par priorité décroissante.
     fn wanted(&self, now: Instant) -> Vec<Job> {
-        let n = self.files.len() as isize;
         let stationary = self.stationary(now);
         let mut jobs = Vec::with_capacity(2 * PREFETCH as usize + 4);
-        let mut want = |i: isize, quality: Quality| {
-            if !(0..n).contains(&i) {
-                return;
-            }
-            let index = i as usize;
+        let mut want = |i: Option<usize>, quality: Quality| {
+            let Some(index) = i else { return };
             let cached = match quality {
                 Quality::Reduced => self.is_ready(index),
                 Quality::Full => self.full.contains(&index),
@@ -336,21 +400,21 @@ impl App {
                 jobs.push(Job { index, quality });
             }
         };
-        let cur = self.cur as isize;
-        let h = self.heading;
-        want(cur, Quality::Reduced);
+        // Voisines au sens du filtre : on ne précharge que ce qui sera affiché.
+        let (cur, h) = (self.cur, self.heading);
+        want(Some(cur), Quality::Reduced);
         if stationary {
-            want(cur, Quality::Full);
+            want(Some(cur), Quality::Full);
         }
         for k in 1..=PREFETCH {
-            want(cur + h * k, Quality::Reduced);
+            want(self.neighbor(cur, h, k), Quality::Reduced);
         }
         for k in 1..=PREFETCH {
-            want(cur - h * k, Quality::Reduced);
+            want(self.neighbor(cur, -h, k), Quality::Reduced);
         }
         if stationary {
-            want(cur + h, Quality::Full);
-            want(cur - h, Quality::Full);
+            want(self.neighbor(cur, h, 1), Quality::Full);
+            want(self.neighbor(cur, -h, 1), Quality::Full);
         }
         jobs
     }
@@ -377,6 +441,41 @@ impl App {
                 self.raw_foreign[self.cur] = marks::is_foreign(&xmp);
             }
         }
+        // L'image courante reste affichée même si elle ne passe plus le filtre.
+        self.refresh_visible();
+    }
+
+    /// Clic sur une commande de marquage (en haut du panneau).
+    fn mark_widget(&mut self, widget: Widget) {
+        match widget {
+            Widget::Star(n) => {
+                let n = if self.marks[self.cur].rating == n { 0 } else { n };
+                self.set_rating(n);
+            }
+            Widget::Color(c) => self.toggle_color(c),
+            Widget::Check => self.edit_mark(|m| {
+                m.rating = if m.retained() { 0 } else { 1 };
+                m.rejected = false;
+            }),
+            Widget::Reject => self.edit_mark(|m| {
+                m.rejected = !m.rejected;
+                m.rating = 0;
+            }),
+            Widget::ClearFilter => {}
+        }
+    }
+
+    /// Clic sur une commande de filtre (en haut de la liste).
+    fn filter_widget(&mut self, widget: Widget) {
+        let mut f = self.filter;
+        match widget {
+            Widget::Star(n) => f.min_rating = if f.min_rating == n { 0 } else { n },
+            Widget::Color(c) => f.colors[c.index()] = !f.colors[c.index()],
+            Widget::Check => f.retained = !f.retained,
+            Widget::Reject => f.rejected = !f.rejected,
+            Widget::ClearFilter => f = Filter::default(),
+        }
+        self.set_filter(f);
     }
 
     /// Chiffre = nombre d'étoiles (0 efface) ; annule un rejet.
@@ -413,18 +512,24 @@ impl App {
             .to_string_lossy()
             .into_owned();
         let m = self.marks[self.cur];
-        let (mark, mark_color) = if m.rejected {
-            ("× Rejetée".to_string(), [225, 85, 75])
+        let mut colors = [false; 5];
+        if let Some(c) = m.color {
+            colors[c.index()] = true;
+        }
+        let controls = Controls {
+            rating: if m.rejected { 0 } else { m.rating },
+            colors,
+            check: m.retained(),
+            reject: m.rejected,
+        };
+        let (mark, mark_color) = if m.foreign {
+            ("XMP externe, lecture seule".to_string(), [200, 150, 90])
+        } else if m.rejected {
+            ("Rejetée".to_string(), [225, 85, 75])
         } else if m.retained() {
-            (format!("{}  Retenue", "★".repeat(m.rating as usize)), [110, 210, 120])
+            ("Retenue".to_string(), [110, 210, 120])
         } else {
             ("Non retenue".to_string(), [105, 105, 105])
-        };
-        let label = match (m.color, m.foreign) {
-            (Some(c), false) => (format!("Étiquette {}", c.name_fr()), c.rgb()),
-            (Some(c), true) => (format!("Étiquette {}   (XMP externe, lecture seule)", c.name_fr()), c.rgb()),
-            (None, true) => ("XMP externe, lecture seule".to_string(), [150, 150, 150]),
-            (None, false) => (String::new(), [0, 0, 0]),
         };
         let status = match self.shown {
             Some(Job { index, quality: Quality::Full }) if index == self.cur => {
@@ -447,9 +552,8 @@ impl App {
             None => "pas de RAW".to_string(),
         };
         let lines = [
-            Line { text: mark, size: 30.0, color: mark_color, gap: 0.0 },
-            Line { text: label.0, size: 16.0, color: label.1, gap: 2.0 },
-            Line { text: name, size: 21.0, color: [230, 230, 230], gap: 14.0 },
+            Line { text: mark, size: 16.0, color: mark_color, gap: 0.0 },
+            Line { text: name, size: 21.0, color: [230, 230, 230], gap: 12.0 },
             Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 3.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
@@ -494,14 +598,15 @@ impl App {
             Line { text: status.into(), size: 16.0, color: [125, 125, 125], gap: 14.0 },
         ];
         let key = format!(
-            "{width}|{}",
+            "{width}|{controls:?}|{}",
             lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("|")
         );
         if key == self.panel_key {
             return;
         }
-        let (pixels, w, h) = self.panel.render_info(width, &lines);
+        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, &lines);
         renderer.set_panel(&pixels, w, h);
+        self.info_hits = hits;
         self.panel_key = key;
         if let Some(w) = &self.window {
             w.request_redraw();
@@ -565,45 +670,81 @@ impl App {
         } else {
             String::new()
         };
-        let header = if status.is_empty() { 0.0 } else { panel::PADDING };
+        let header = panel::FILTER_BAR + if status.is_empty() { 0.0 } else { panel::PADDING };
         let fit = ((height as f32 - header) / Panel::row_height(width)).max(0.0) as isize;
 
+        // Rafales listées : celles qui ont au moins une image visible.
+        let filtering = self.filter.active();
+        let listed: Vec<usize> = (0..self.bursts.len())
+            .filter(|&i| !filtering || !visible_in(&self.visible, self.bursts[i].start, self.bursts[i].len).is_empty())
+            .collect();
         let cur_burst = self.burst_of.get(self.cur).copied();
         if cur_burst != self.list_burst {
             self.list_burst = cur_burst;
             self.list_offset = 0;
         }
         // Rafale courante au premier tiers, décalable à la molette.
-        let anchor = cur_burst.unwrap_or(0) as isize - fit / 3;
-        let last_first = (self.bursts.len() as isize - fit).max(0);
+        let cur_pos = cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)) as isize;
+        let anchor = cur_pos - fit / 3;
+        let last_first = (listed.len() as isize - fit).max(0);
         let first = (anchor + self.list_offset).clamp(0, last_first);
         self.list_offset = first - anchor;
-        let rows: Vec<Row> = self
-            .bursts
+        let rows: Vec<Row> = listed
             .iter()
-            .enumerate()
             .skip(first as usize)
             .take(fit as usize)
-            .map(|(i, b)| Row {
-                start: b.start,
-                len: b.len,
-                number: i + 1,
-                rate: b.rate,
-                marked: self.marks[b.start..b.start + b.len]
-                    .iter()
-                    .filter(|m| m.retained())
-                    .count(),
-                current: Some(i) == cur_burst,
+            .map(|&i| {
+                let b = &self.bursts[i];
+                let all: Vec<usize>;
+                let indices: &[usize] = if filtering {
+                    visible_in(&self.visible, b.start, b.len)
+                } else {
+                    all = (b.start..b.start + b.len).collect();
+                    &all
+                };
+                Row {
+                    start: b.start,
+                    len: b.len,
+                    shown: filtering.then_some(indices.len()),
+                    picks: panel::spread(indices),
+                    first: indices[0],
+                    number: i + 1,
+                    rate: b.rate,
+                    marked: self.marks[b.start..b.start + b.len]
+                        .iter()
+                        .filter(|m| m.retained())
+                        .count(),
+                    current: Some(i) == cur_burst,
+                }
             })
             .collect();
 
-        let key = format!("{width}x{height} {status} {rows:?}");
+        let f = self.filter;
+        let filter_controls = Controls {
+            rating: f.min_rating,
+            colors: f.colors,
+            check: f.retained,
+            reject: f.rejected,
+        };
+        let filter_text = if filtering {
+            format!("{} / {} photos", self.visible.len(), self.files.len())
+        } else {
+            "Filtre : toutes les photos".to_string()
+        };
+        let key = format!("{width}x{height} {status} {filter_controls:?} {filter_text} {rows:?}");
         if key != self.list_key {
-            let list = self
-                .panel
-                .render_list(width, height, &rows, &self.metas, &status);
+            let list = self.panel.render_list(
+                width,
+                height,
+                &filter_controls,
+                &filter_text,
+                &rows,
+                &self.metas,
+                &status,
+            );
             renderer.set_list(&list.pixels, list.width, list.height);
             self.list_hits = list.hits;
+            self.filter_hits = list.filter_hits;
             self.list_track = list.track;
             self.list_key = key;
             if let Some(w) = &self.window {
@@ -623,8 +764,8 @@ impl App {
             }
         });
         // Ascenseur, seulement si toutes les rafales ne tiennent pas.
-        let total = self.bursts.len() as f32;
-        self.scrollbar = (fit > 0 && self.bursts.len() > fit as usize).then(|| {
+        let total = listed.len() as f32;
+        self.scrollbar = (fit > 0 && listed.len() > fit as usize).then(|| {
             let top = ly + header;
             let h = fit as f32 * Panel::row_height(width);
             let x = lx + width as f32 - panel::PADDING / 2.0 + 2.0;
@@ -675,7 +816,7 @@ impl App {
         self.list_offset = first - s.anchor;
     }
 
-    /// Clic dans la liste : positionne la vue au début de la rafale.
+    /// Clic dans le panneau : commandes de marquage, de filtre, ou ligne de rafale.
     fn click(&mut self) {
         let (Some((cx, cy)), Some(renderer)) = (self.cursor, &self.renderer) else {
             return;
@@ -684,9 +825,15 @@ impl App {
         if cx < lx {
             return;
         }
-        let y = cy - ly;
-        if let Some(&(start, _, _)) = self.list_hits.iter().find(|(_, top, bottom)| (*top..*bottom).contains(&y)) {
-            self.jump(start, Instant::now());
+        if let Some(h) = self.info_hits.iter().find(|h| h.contains((cx - lx, cy))) {
+            return self.mark_widget(h.widget);
+        }
+        let local = (cx - lx, cy - ly);
+        if let Some(h) = self.filter_hits.iter().find(|h| h.contains(local)) {
+            return self.filter_widget(h.widget);
+        }
+        if let Some(&(first, _, _)) = self.list_hits.iter().find(|(_, top, bottom)| (*top..*bottom).contains(&local.1)) {
+            self.jump(first, Instant::now());
         }
     }
 
@@ -925,6 +1072,13 @@ fn sync_raws(marks: &[Mark], raws: &[Option<PathBuf>]) -> Vec<bool> {
         raws.iter().flatten().count()
     );
     foreign
+}
+
+/// Images visibles (liste triée) parmi `start..start + len`.
+fn visible_in(visible: &[usize], start: usize, len: usize) -> &[usize] {
+    let a = visible.partition_point(|&v| v < start);
+    let b = visible.partition_point(|&v| v < start + len);
+    &visible[a..b]
 }
 
 fn list_jpegs(dir: &Path) -> std::io::Result<Vec<PathBuf>> {

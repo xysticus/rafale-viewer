@@ -8,6 +8,7 @@ use fontdue::{Font, FontSettings};
 use lru::LruCache;
 use turbojpeg::{Decompressor, Image, PixelFormat};
 
+use crate::marks::Color;
 use crate::meta::Meta;
 
 pub const PADDING: f32 = 24.0;
@@ -17,6 +18,50 @@ const ROW_HEADER: f32 = 25.0;
 const ROW_GAP: f32 = 14.0;
 const HIGHLIGHT: [u8; 4] = [255, 255, 255, 22];
 const MARKED: [u8; 3] = [110, 210, 120];
+/// Rangée de commandes (étoiles, couleurs, coche, rejet).
+const CTRL: f32 = 22.0;
+const CTRL_GAP: f32 = 18.0;
+const STAR_ON: [u8; 3] = [235, 190, 60];
+const OFF: [u8; 3] = [85, 85, 85];
+const CHECK_ON: [u8; 3] = [80, 175, 85];
+const REJECT_ON: [u8; 3] = [205, 70, 60];
+/// Hauteur de la barre de filtre en haut de la liste.
+pub const FILTER_BAR: f32 = CTRL + 16.0;
+
+/// Élément cliquable du panneau.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Widget {
+    Star(u8),
+    Color(Color),
+    Check,
+    Reject,
+    ClearFilter,
+}
+
+/// État affiché par une rangée de commandes.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Controls {
+    pub rating: u8,
+    pub colors: [bool; 5],
+    pub check: bool,
+    pub reject: bool,
+}
+
+/// Zone cliquable, en pixels dans l'image du panneau.
+#[derive(Debug, Clone, Copy)]
+pub struct Hit {
+    pub widget: Widget,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Hit {
+    pub fn contains(&self, (x, y): (f32, f32)) -> bool {
+        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
+    }
+}
 
 pub struct Line {
     pub text: String,
@@ -32,6 +77,12 @@ pub struct Line {
 pub struct Row {
     pub start: usize,
     pub len: usize,
+    /// Images de la rafale qui passent le filtre (None sans filtre).
+    pub shown: Option<usize>,
+    /// Images dont on montre la vignette.
+    pub picks: Vec<usize>,
+    /// Première image visible (cible d'un clic).
+    pub first: usize,
     pub number: usize,
     /// Rythme mesuré, en images/s.
     pub rate: Option<f32>,
@@ -67,6 +118,120 @@ impl Canvas {
                 self.pixels[i..i + 4].copy_from_slice(&color);
             }
         }
+    }
+
+    /// Compose une couleur par-dessus le pixel (alpha non prémultiplié).
+    fn blend(&mut self, px: usize, py: usize, rgb: [u8; 3], a: f32) {
+        if px >= self.width || py >= self.height || a <= 0.0 {
+            return;
+        }
+        let i = 4 * (py * self.width + px);
+        let da = self.pixels[i + 3] as f32 / 255.0;
+        let out = a + da * (1.0 - a);
+        for c in 0..3 {
+            let v = (rgb[c] as f32 * a + self.pixels[i + c] as f32 * da * (1.0 - a)) / out;
+            self.pixels[i + c] = v.round() as u8;
+        }
+        self.pixels[i + 3] = (out * 255.0).round() as u8;
+    }
+
+    /// Remplit une forme définie par `inside`, avec anticrénelage (4 × 4 échantillons).
+    fn shape(&mut self, x: f32, y: f32, w: f32, h: f32, rgb: [u8; 3], alpha: f32, inside: impl Fn(f32, f32) -> bool) {
+        let (x0, y0) = (x.floor().max(0.0) as usize, y.floor().max(0.0) as usize);
+        let (x1, y1) = ((x + w).ceil() as usize, (y + h).ceil() as usize);
+        for py in y0..y1.min(self.height) {
+            for px in x0..x1.min(self.width) {
+                let mut n = 0;
+                for sy in 0..4 {
+                    for sx in 0..4 {
+                        let fx = px as f32 + (sx as f32 + 0.5) / 4.0;
+                        let fy = py as f32 + (sy as f32 + 0.5) / 4.0;
+                        n += inside(fx, fy) as u32;
+                    }
+                }
+                self.blend(px, py, rgb, alpha * n as f32 / 16.0);
+            }
+        }
+    }
+
+    fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, rgb: [u8; 3], alpha: f32) {
+        self.shape(x, y, w, h, rgb, alpha, |_, _| true);
+    }
+
+    fn frame(&mut self, x: f32, y: f32, s: f32, t: f32, rgb: [u8; 3]) {
+        self.shape(x, y, s, s, rgb, 1.0, |px, py| {
+            px < x + t || px > x + s - t || py < y + t || py > y + s - t
+        });
+    }
+
+    /// Trait épais entre une suite de points.
+    fn polyline(&mut self, pts: &[(f32, f32)], width: f32, rgb: [u8; 3]) {
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for &(x, y) in pts {
+            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        }
+        let r = width / 2.0;
+        self.shape(x0 - r, y0 - r, x1 - x0 + width, y1 - y0 + width, rgb, 1.0, |px, py| {
+            pts.windows(2).any(|s| segment_distance((px, py), s[0], s[1]) <= r)
+        });
+    }
+
+    /// Étoile à cinq branches inscrite dans le carré (x, y, s).
+    fn star(&mut self, x: f32, y: f32, s: f32, rgb: [u8; 3]) {
+        let (cx, cy) = (x + s / 2.0, y + s / 2.0 + s * 0.04);
+        let pts: Vec<(f32, f32)> = (0..10)
+            .map(|k| {
+                let r = if k % 2 == 0 { s * 0.5 } else { s * 0.2 };
+                let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0;
+                (cx + r * a.cos(), cy + r * a.sin())
+            })
+            .collect();
+        self.shape(x, y, s, s, rgb, 1.0, |px, py| point_in_polygon((px, py), &pts));
+    }
+
+    /// Rangée de commandes à partir de (x, y) ; renvoie les zones cliquables.
+    fn controls(&mut self, x: f32, y: f32, c: &Controls) -> Vec<Hit> {
+        let mut hits = Vec::with_capacity(12);
+        let mut x = x;
+        for n in 1..=5u8 {
+            let rgb = if n <= c.rating { STAR_ON } else { OFF };
+            self.star(x, y, CTRL, rgb);
+            hits.push(Hit { widget: Widget::Star(n), x, y, w: CTRL + 2.0, h: CTRL });
+            x += CTRL + 2.0;
+        }
+        x += CTRL_GAP;
+        let chip = CTRL - 4.0;
+        for color in Color::ALL {
+            let on = c.colors[color.index()];
+            let (cx, cy) = (x + 2.0, y + 2.0);
+            if on {
+                self.rect(cx - 2.0, cy - 2.0, chip + 4.0, chip + 4.0, [235, 235, 235], 1.0);
+            }
+            self.rect(cx, cy, chip, chip, color.rgb(), if on { 1.0 } else { 0.35 });
+            hits.push(Hit { widget: Widget::Color(color), x, y, w: CTRL + 2.0, h: CTRL });
+            x += CTRL + 4.0;
+        }
+        x += CTRL_GAP;
+        let s = CTRL;
+        if c.check {
+            self.rect(x, y, s, s, CHECK_ON, 1.0);
+            let pts = [(x + s * 0.24, y + s * 0.52), (x + s * 0.43, y + s * 0.72), (x + s * 0.78, y + s * 0.3)];
+            self.polyline(&pts, 2.6, [255, 255, 255]);
+        } else {
+            self.frame(x, y, s, 2.0, OFF);
+        }
+        hits.push(Hit { widget: Widget::Check, x, y, w: s, h: s });
+        x += s + 8.0;
+        if c.reject {
+            self.rect(x, y, s, s, REJECT_ON, 1.0);
+            let (a, b) = (s * 0.28, s * 0.72);
+            self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.6, [255, 255, 255]);
+            self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.6, [255, 255, 255]);
+        } else {
+            self.frame(x, y, s, 2.0, OFF);
+        }
+        hits.push(Hit { widget: Widget::Reject, x, y, w: s, h: s });
+        hits
     }
 
     fn blit(&mut self, x: usize, y: usize, img: &Thumb) {
@@ -125,8 +290,10 @@ pub struct ListImage {
     pub pixels: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    /// (début de rafale, haut, bas) en pixels dans l'image.
+    /// (image à afficher au clic, haut, bas) en pixels dans l'image.
     pub hits: Vec<(usize, f32, f32)>,
+    /// Commandes de la barre de filtre.
+    pub filter_hits: Vec<Hit>,
     /// Emplacement du repère de position sous la rafale courante : (x, y, largeur).
     pub track: Option<(f32, f32, f32)>,
 }
@@ -153,12 +320,12 @@ impl Panel {
         }
     }
 
-    /// Rend les lignes d'informations dans une image de largeur `width`.
-    pub fn render_info(&self, width: u32, lines: &[Line]) -> (Vec<u8>, u32, u32) {
+    /// Rend la rangée de commandes puis les lignes d'informations, en largeur `width`.
+    pub fn render_info(&self, width: u32, controls: &Controls, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
         let Some(font) = &self.font else {
-            return (vec![0; 4], 1, 1);
+            return (vec![0; 4], 1, 1, Vec::new());
         };
-        let mut y = PADDING;
+        let mut y = PADDING + CTRL + 6.0;
         let mut baselines = Vec::with_capacity(lines.len());
         for line in lines {
             let m = font.horizontal_line_metrics(line.size).unwrap();
@@ -168,11 +335,12 @@ impl Panel {
         }
         let height = (y + PADDING / 2.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
+        let hits = canvas.controls(PADDING, PADDING, controls);
         let max_x = width as f32 - PADDING / 2.0;
         for (line, &baseline) in lines.iter().zip(&baselines) {
             canvas.text(font, PADDING, baseline, max_x, &line.text, line.size, line.color);
         }
-        (canvas.pixels, width, height)
+        (canvas.pixels, width, height, hits)
     }
 
     /// Hauteur d'une ligne de rafale pour une largeur de panneau donnée.
@@ -181,18 +349,43 @@ impl Panel {
         ROW_HEADER + th as f32 + ROW_GAP
     }
 
-    /// Rend les lignes `rows` (déjà choisies pour tenir dans `height`).
-    pub fn render_list(&mut self, width: u32, height: u32, rows: &[Row], metas: &[Option<Meta>], status: &str) -> ListImage {
+    /// Rend la barre de filtre puis les lignes `rows` (déjà choisies pour tenir dans `height`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_list(
+        &mut self,
+        width: u32,
+        height: u32,
+        filter: &Controls,
+        filter_text: &str,
+        rows: &[Row],
+        metas: &[Option<Meta>],
+        status: &str,
+    ) -> ListImage {
         let mut canvas = Canvas::new(width, height.max(1));
         let mut hits = Vec::with_capacity(rows.len());
         let mut track = None;
+        let mut filter_hits = canvas.controls(PADDING, 6.0, filter);
         let Some(font) = self.font.take() else {
-            return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, track };
+            return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, filter_hits, track };
         };
         let (tw, th) = thumb_size(width);
         let row_h = Self::row_height(width);
         let max_x = width as f32 - PADDING / 2.0;
-        let mut y = 0.0;
+
+        // À droite des commandes de filtre : nombre de photos et « effacer ».
+        let after = filter_hits.last().map_or(PADDING, |h| h.x + h.w) + 16.0;
+        let active = filter != &Controls::default();
+        let color = if active { [215, 215, 215] } else { [120, 120, 120] };
+        canvas.text(&font, after, 6.0 + 16.0, max_x, filter_text, 15.0, color);
+        if active {
+            let label = "effacer";
+            let w = 56.0;
+            let x = width as f32 - PADDING - w;
+            canvas.text(&font, x, 6.0 + 16.0, max_x, label, 15.0, [150, 150, 150]);
+            filter_hits.push(Hit { widget: Widget::ClearFilter, x, y: 0.0, w, h: FILTER_BAR });
+        }
+        canvas.rect(PADDING / 2.0, FILTER_BAR - 4.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
+        let mut y = FILTER_BAR;
 
         if !status.is_empty() {
             canvas.text(&font, PADDING, y + 17.0, max_x, status, 15.0, [125, 125, 125]);
@@ -208,22 +401,21 @@ impl Panel {
                 .and_then(|m| m.as_ref())
                 .map_or("", |m| m.clock.as_str());
             let rate = row.rate.map(|r| format!("   {}", format_rate(r))).unwrap_or_default();
-            let header = format!("Rafale {}   {clock}   {} images{rate}", row.number, row.len);
+            let count = match row.shown {
+                Some(n) => format!("{n} / {} images", row.len),
+                None => format!("{} images", row.len),
+            };
+            let header = format!("Rafale {}   {clock}   {count}{rate}", row.number);
             let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
             canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
             if row.marked > 0 {
-                let mark = format!("★ {}", row.marked);
-                canvas.text(&font, width as f32 - PADDING - 38.0, top + 18.0, max_x, &mark, 15.0, MARKED);
+                // Étoile dessinée : la police n'a pas toujours le caractère ★.
+                let x = width as f32 - PADDING - 40.0;
+                canvas.star(x, top + 5.0, 14.0, MARKED);
+                canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
             }
 
-            // Vignettes réparties sur la rafale : première, …, dernière.
-            let n = THUMBS_PER_ROW.min(row.len);
-            for k in 0..n {
-                let index = if n == 1 {
-                    row.start
-                } else {
-                    row.start + k * (row.len - 1) / (n - 1)
-                };
+            for (k, &index) in row.picks.iter().enumerate() {
                 let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
                 let ty = top + ROW_HEADER;
                 if let Some(t) = self.thumb(index, tw, th, metas) {
@@ -241,11 +433,11 @@ impl Panel {
                 let y = top + ROW_HEADER + th as f32 + 3.0;
                 track = Some((PADDING, y, width as f32 - 2.0 * PADDING));
             }
-            hits.push((row.start, top, top + row_h));
+            hits.push((row.first, top, top + row_h));
             y += row_h;
         }
         self.font = Some(font);
-        ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, track }
+        ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, filter_hits, track }
     }
 
     fn thumb(&mut self, index: usize, tw: u32, th: u32, metas: &[Option<Meta>]) -> Option<Arc<Thumb>> {
@@ -272,6 +464,35 @@ impl Panel {
         self.thumbs.put((index, tw), t.clone());
         Some(t)
     }
+}
+
+/// Images de la rafale dont on montre la vignette : réparties de la première à la dernière.
+pub fn spread(indices: &[usize]) -> Vec<usize> {
+    let n = THUMBS_PER_ROW.min(indices.len());
+    (0..n)
+        .map(|k| if n == 1 { indices[0] } else { indices[k * (indices.len() - 1) / (n - 1)] })
+        .collect()
+}
+
+fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 { (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    let (qx, qy) = (a.0 + t * dx - p.0, a.1 + t * dy - p.1);
+    (qx * qx + qy * qy).sqrt()
+}
+
+fn point_in_polygon(p: (f32, f32), pts: &[(f32, f32)]) -> bool {
+    let mut inside = false;
+    let mut j = pts.len() - 1;
+    for i in 0..pts.len() {
+        let (a, b) = (pts[i], pts[j]);
+        if (a.1 > p.1) != (b.1 > p.1) && p.0 < (b.0 - a.0) * (p.1 - a.1) / (b.1 - a.1) + a.0 {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 /// « 25 i/s », ou « 12,5 i/s » si le rythme n'est pas entier.
