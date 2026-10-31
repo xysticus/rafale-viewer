@@ -53,14 +53,9 @@ impl Color {
         }
     }
 
-    pub fn name_fr(self) -> &'static str {
-        match self {
-            Color::Red => "rouge",
-            Color::Yellow => "jaune",
-            Color::Green => "vert",
-            Color::Blue => "bleu",
-            Color::Purple => "violet",
-        }
+    /// Rang dans `ALL`.
+    pub fn index(self) -> usize {
+        Color::ALL.iter().position(|&c| c == self).unwrap()
     }
 
     pub fn rgb(self) -> [u8; 3] {
@@ -92,6 +87,33 @@ impl Mark {
 
     fn is_empty(&self) -> bool {
         self.rating == 0 && !self.rejected && self.color.is_none()
+    }
+}
+
+/// Filtre de navigation : les critères actifs se cumulent (et).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Filter {
+    /// Note minimale (0 = pas de critère) ; exclut les rejetées.
+    pub min_rating: u8,
+    /// Couleurs acceptées (aucune cochée = pas de critère).
+    pub colors: [bool; 5],
+    /// Retenues et/ou rejetées (aucune des deux = pas de critère).
+    pub retained: bool,
+    pub rejected: bool,
+}
+
+impl Filter {
+    pub fn active(&self) -> bool {
+        *self != Filter::default()
+    }
+
+    pub fn matches(&self, m: &Mark) -> bool {
+        let rating = self.min_rating == 0 || (!m.rejected && m.rating >= self.min_rating);
+        let color = !self.colors.contains(&true) || m.color.is_some_and(|c| self.colors[c.index()]);
+        let state = !(self.retained || self.rejected)
+            || (self.retained && m.retained())
+            || (self.rejected && m.rejected);
+        rating && color && state
     }
 }
 
@@ -236,6 +258,24 @@ mod tests {
         mark.rating = 1;
         assert!(save(&photo, &mark).is_err());
         assert_eq!(std::fs::read_to_string(sidecar(&photo)).unwrap(), foreign);
+    }
+
+    #[test]
+    fn filtre() {
+        let rouge3 = Mark { rating: 3, color: Some(Color::Red), ..Default::default() };
+        let rejetee = Mark { rejected: true, ..Default::default() };
+        let rien = Mark::default();
+        let tout = Filter::default();
+        assert!(!tout.active() && tout.matches(&rien) && tout.matches(&rejetee));
+        let deux = Filter { min_rating: 2, ..Default::default() };
+        assert!(deux.matches(&rouge3) && !deux.matches(&rien) && !deux.matches(&rejetee));
+        let mut couleurs = Filter::default();
+        couleurs.colors[Color::Blue.index()] = true;
+        assert!(!couleurs.matches(&rouge3));
+        couleurs.colors[Color::Red.index()] = true;
+        assert!(couleurs.matches(&rouge3), "plusieurs couleurs : l'une ou l'autre");
+        let tri = Filter { retained: true, rejected: true, ..Default::default() };
+        assert!(tri.matches(&rouge3) && tri.matches(&rejetee) && !tri.matches(&rien));
     }
 
     #[test]
