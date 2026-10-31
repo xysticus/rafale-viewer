@@ -35,33 +35,33 @@ rafale-viewer ~/Images/2026-10-29
 ┌──────────────────────────────────────┬──────────────────────┐
 │                                      │ ★★★☆☆ ■■■■■ [✓] [✕] │
 │                                      │ Retenue              │
-│                                      │ Étiquette rouge      │
 │                                      │ PA290123.JPG         │
-│              photo                   │ 123 / 2355           │
-│        (calée à gauche ;             │ Rafale 12  vue 5/54  │
-│     portrait : centrée dans          │ 1/500 s  f/4  ISO …  │
-│        la zone libre)                │ Natural · filtre …   │
-│                                      │ 100 % : loupe …      │
+│                                      │ 1/500 s  f/4  ISO …  │
+│              photo                   │ Natural · filtre …   │
+│        (calée à gauche ;             │ RAW : raw/PA….ORF    │
+│     portrait : centrée dans          │ 123 / 2355           │
+│        la zone libre)                │ Rafale 12  vue 5/54  │
 │                                      ├──────────────────────┤
 │                                      │ Rafale 11  20:45:07 ▐│
 │                                      │ [▫][▫][▫][▫]        ▐│
 │                                      │ Rafale 12  …  25 i/s▐│
 │                                      │ [▫][▫][▫][▫]        ▐│
 │                                      │ ━━━ (position)       │
+│                                      ├──────────────────────┤
+│                                      │ ★★☆☆☆ ■■■■■ [ ] [ ] │ ← filtre
 └──────────────────────────────────────┴──────────────────────┘
 ```
 
-Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend deux parties.
+Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois parties.
 
-**Les informations sur la photo affichée :**
-- le marquage (retenue, rejetée ou non retenue) et l'étiquette de couleur ;
-- le nom du fichier et sa position dans le dossier ;
-- la rafale à laquelle elle appartient, sa place dans cette rafale et le rythme de la rafale ;
-- l'exposition (vitesse, ouverture, ISO) ;
-- le mode image et le filtre de bruit de l'appareil ;
-- l'état du marquage (retenue, rejetée, non retenue).
+**En haut, la photo affichée :**
+- les commandes de marquage (étoiles, couleur, retenue, rejet) et l'état en toutes lettres ;
+- le nom du fichier, puis l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
+- le RAW associé, la position dans le dossier, la rafale, la place dans la rafale et le rythme.
 
 **La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait blanc sous ses vignettes montre où tu en es.
+
+**En bas, la barre de filtre** (voir « Souris »).
 
 ## Clavier
 
