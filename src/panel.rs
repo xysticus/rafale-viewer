@@ -333,9 +333,13 @@ impl Panel {
             baselines.push(y);
             y += -m.descent + m.line_gap;
         }
-        let height = (y + PADDING / 2.0).ceil() as u32;
+        // Double trait en bas : sépare les informations de la liste des rafales.
+        let height = (y + PADDING / 2.0 + 10.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
         let hits = canvas.controls(PADDING, PADDING, controls);
+        for dy in [7.0, 3.0] {
+            canvas.rect(PADDING / 2.0, height as f32 - dy, width as f32 - PADDING, 1.0, [255, 255, 255], 0.22);
+        }
         let max_x = width as f32 - PADDING / 2.0;
         for (line, &baseline) in lines.iter().zip(&baselines) {
             canvas.text(font, PADDING, baseline, max_x, &line.text, line.size, line.color);
