@@ -19,7 +19,7 @@ résolution arrive en un quart de seconde.
 C'est là qu'on vérifie la netteté, sur un visage par exemple.
 • Un clic sur la photo fige la loupe à cet endroit : elle y reste d'une vue à \
 l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
-Clic droit pour la libérer.
+Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
 
 RAFALES ET VUE À PLAT
 
@@ -105,7 +105,7 @@ SOURIS
 
 Pointeur sur la photo, à l'arrêt : loupe 100 %
 Clic sur la photo : fige la loupe à cet endroit (un autre clic la déplace)
-Clic droit : libère la loupe figée
+Clic droit : libère la loupe figée (libérée aussi en changeant de rafale)
 Étoiles, couleurs, ✓, ✕ en haut du panneau : marquage de la photo affichée
 (re-clic sur la même étoile ou couleur : l'enlève)
 Mêmes commandes en bas : filtre ; « effacer » supprime le filtre
