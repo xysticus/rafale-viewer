@@ -49,6 +49,7 @@ rafale-viewer ~/Images/2026-10-29
 │                                      │ ━━━ (position)       │
 │                                      ├──────────────────────┤
 │                                      │ ★★☆☆☆ ■■■■■ [ ] [ ] │ ← filtre
+│                                      │ [JPEG][RAW][…] Copier│ ← copie
 │                                      │ [Rafales][À plat]  … │ ← vue, aide
 └──────────────────────────────────────┴──────────────────────┘
 ```
@@ -62,7 +63,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait blanc sous ses vignettes montre où tu en es.
 
-**En bas, la barre de filtre** (voir « Souris »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
+**En bas, la barre de filtre** (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
 
 **Vue au lancement :** À plat, sauf si Rafale détecte une rafale de plus de 5 photos ; dans ce cas, vue Rafales. Les boutons permettent toujours de changer.
 
@@ -84,6 +85,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | 0 | Efface les étoiles |
 | X ou R | Rejetée ↔ non rejetée |
 | F1 à F5 | Étiquette rouge, jaune, verte, bleue, violette (un deuxième appui l'enlève) |
+| Ctrl+C | Copie la sélection dans le presse-papiers (voir « Copier la sélection ») |
 | F ou F11 | Plein écran |
 | Échap ou Q | Quitter |
 
@@ -125,6 +127,16 @@ Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), d
 **Le fichier XMP d'un autre logiciel n'est pas modifié s'il contient quelque chose** : une note, une couleur, un historique de retouches darktable, un titre, des mots-clés… Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.
 
 Un XMP **vierge** d'un autre logiciel, comme ceux que darktable crée pour chaque photo à l'import, est remplacé par celui de Rafale dès que tu marques la photo. Tant que tu ne la marques pas, Rafale n'y touche pas. Tu peux donc essayer un autre logiciel sur une séance sans t'empêcher d'y trier ensuite. darktable ne relit pas tout seul les `.xmp` modifiés : utilise sa commande de relecture des sidecars.
+
+## Copier la sélection
+
+Pour donner à un logiciel de retouche un dossier qui ne contient que les photos choisies, sans dépendre de sa façon de lire notes et étiquettes :
+
+1. Choisis en bas **JPEG** (par défaut), **RAW** ou **Les deux**.
+2. **Ctrl+C**, ou clic sur **« Copier … »**. La sélection, ce sont les photos qui passent le filtre si un filtre est actif, sinon les photos retenues. Le bouton indique combien il y en a.
+3. Dans **Fichiers**, ouvre le dossier de destination et fais **Ctrl+V** : les fichiers y sont copiés.
+
+Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copiés, 2 sans RAW ». Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
 
 ## Rafales et réglages de l'appareil
 

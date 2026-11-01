@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use lru::LruCache;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, Modifiers, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
@@ -23,7 +23,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 use loader::{Decoded, Job, Loader, Quality};
 use marks::{Color, Filter, Mark};
 use meta::Meta;
-use panel::{Cell, Controls, Entry, Hit, Line, Panel, Row, Track, View, Widget};
+use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
 use render::{Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -108,6 +108,10 @@ struct App {
     flat: bool,
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
     flat_chosen: bool,
+    /// Fichiers copiés par Ctrl+C, et compte rendu de la dernière copie.
+    copy_kind: CopyKind,
+    copy_message: String,
+    modifiers: Modifiers,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
     help: Option<Child>,
     /// Décalage de la liste à la molette (en lignes), remis à zéro au changement
@@ -186,6 +190,9 @@ impl App {
             burst_of: Vec::new(),
             flat: true,
             flat_chosen: false,
+            copy_kind: CopyKind::default(),
+            copy_message: String::new(),
+            modifiers: Modifiers::default(),
             help: None,
             list_offset: 0,
             list_group: None,
@@ -261,7 +268,10 @@ impl App {
         let pressed = event.state == ElementState::Pressed;
         // Les lettres suivent la disposition du clavier (AZERTY), le reste la position physique.
         if let Key::Character(c) = &event.logical_key {
+            let ctrl = self.modifiers.state().control_key();
             match c.to_lowercase().as_str() {
+                "c" if pressed && ctrl => return self.copy_selection(),
+                _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 "q" if pressed => return event_loop.exit(),
                 // Rejet : X comme Lightroom, R comme darktable.
@@ -361,6 +371,49 @@ impl App {
 
     fn flat_view(&self) -> bool {
         self.flat && self.files.len() < FLAT_MAX
+    }
+
+    /// Sélection : les photos qui passent le filtre s'il y en a un, sinon les retenues.
+    fn selection(&self) -> Vec<usize> {
+        if self.filter.active() {
+            self.visible.clone()
+        } else {
+            (0..self.files.len()).filter(|&i| self.marks[i].retained()).collect()
+        }
+    }
+
+    /// Met les fichiers de la sélection dans le presse-papiers, comme une copie
+    /// dans Fichiers : un Ctrl+V dans un dossier les y copie.
+    fn copy_selection(&mut self) {
+        let selection = self.selection();
+        let mut paths = Vec::new();
+        let mut no_raw = 0;
+        for &i in &selection {
+            if self.copy_kind != CopyKind::Raw {
+                paths.push(self.files[i].clone());
+            }
+            if self.copy_kind != CopyKind::Jpeg {
+                match &self.raws[i] {
+                    Some(raw) => paths.push(raw.clone()),
+                    None => no_raw += 1,
+                }
+            }
+        }
+        self.copy_message = if paths.is_empty() {
+            if selection.is_empty() { "sélection vide".into() } else { "aucun RAW".into() }
+        } else {
+            match clipboard_files(&paths) {
+                Ok(()) => {
+                    let missing = if no_raw > 0 { format!(", {no_raw} sans RAW") } else { String::new() };
+                    format!("{} fichiers copiés{missing} : Ctrl+V dans Fichiers", paths.len())
+                }
+                Err(e) => {
+                    log::error!("presse-papiers : {e}");
+                    format!("échec : {e}")
+                }
+            }
+        };
+        log::info!("copie de la sélection : {}", self.copy_message);
     }
 
     /// Ouvre une fenêtre d'aide à texte sélectionnable (zenity).
@@ -549,6 +602,12 @@ impl App {
             }
             Widget::Principles => return self.show_help(help::PRINCIPLES_TITLE, help::PRINCIPLES),
             Widget::Shortcuts => return self.show_help(help::SHORTCUTS_TITLE, help::SHORTCUTS),
+            Widget::CopyKind(kind) => {
+                self.copy_kind = kind;
+                self.copy_message.clear();
+                return;
+            }
+            Widget::Copy => return self.copy_selection(),
             Widget::Photo(_) => return,
         }
         self.set_filter(f);
@@ -841,7 +900,19 @@ impl App {
         } else {
             "Filtre : toutes les photos".to_string()
         };
-        let view = View { flat_available: self.files.len() < FLAT_MAX, flat };
+        let count = if filtering {
+            self.visible.len()
+        } else {
+            self.marks.iter().filter(|m| m.retained()).count()
+        };
+        let what = if filtering { "filtrées" } else { "retenues" };
+        let view = View {
+            flat_available: self.files.len() < FLAT_MAX,
+            flat,
+            copy_kind: self.copy_kind,
+            copy_label: format!("Copier {count} {what}"),
+            copy_message: self.copy_message.clone(),
+        };
         let key = format!("{width}x{height} {status} {filter_controls:?} {filter_text} {view:?} {entries:?}");
         if key != self.list_key {
             let list = self.panel.render_list(
@@ -849,7 +920,7 @@ impl App {
                 height,
                 &filter_controls,
                 &filter_text,
-                view,
+                &view,
                 &entries,
                 &self.metas,
                 &status,
@@ -1142,6 +1213,7 @@ impl ApplicationHandler for App {
                 self.backward_held = false;
                 self.scrolling = 0;
             }
+            WindowEvent::ModifiersChanged(m) => self.modifiers = m,
             WindowEvent::KeyboardInput { event, .. } => self.on_key(&event, event_loop),
             _ => {}
         }
@@ -1185,6 +1257,39 @@ fn sync_raws(marks: &[Mark], raws: &[Option<PathBuf>]) -> Vec<bool> {
         raws.iter().flatten().count()
     );
     foreign
+}
+
+/// Met des fichiers dans le presse-papiers au format de Fichiers (Nautilus),
+/// avec wl-copy, qui reste en arrière-plan pour servir le contenu.
+fn clipboard_files(paths: &[PathBuf]) -> std::io::Result<()> {
+    let mut text = String::from("copy");
+    for p in paths {
+        text.push('\n');
+        text.push_str(&file_uri(&std::path::absolute(p)?));
+    }
+    let mut child = Command::new("wl-copy")
+        .args(["--type", "x-special/gnome-copied-files"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()?;
+    child.stdin.take().unwrap().write_all(text.as_bytes())?;
+    // wl-copy rend la main dès qu'il a pris le presse-papiers.
+    let status = child.wait()?;
+    if status.success() { Ok(()) } else { Err(std::io::Error::other(format!("wl-copy : {status}"))) }
+}
+
+/// URI `file://` d'un chemin absolu, avec les caractères spéciaux encodés.
+fn file_uri(path: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            uri.push(b as char);
+        } else {
+            uri.push_str(&format!("%{b:02X}"));
+        }
+    }
+    uri
 }
 
 /// Images visibles (liste triée) parmi `start..start + len`.
@@ -1248,6 +1353,15 @@ fn main() {
         .expect("boucle d'événements");
     let mut app = App::new(dir, files, event_loop.create_proxy(), fps);
     event_loop.run_app(&mut app).expect("boucle d'événements");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn uri_encodee() {
+        let p = std::path::Path::new("/home/a/Images/Pastré lumière/P#1.JPG");
+        assert_eq!(super::file_uri(p), "file:///home/a/Images/Pastr%C3%A9%20lumi%C3%A8re/P%231.JPG");
+    }
 }
 
 fn usage() -> ! {
