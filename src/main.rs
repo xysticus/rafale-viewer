@@ -337,6 +337,7 @@ impl App {
                     return self.edit_mark(|m| {
                         m.rejected = !m.rejected;
                         m.rating = 0;
+                        m.picked = false;
                     });
                 }
                 _ => {}
@@ -844,6 +845,7 @@ impl App {
             Widget::Reject => self.edit_mark(|m| {
                 m.rejected = !m.rejected;
                 m.rating = 0;
+                m.picked = false;
             }),
             _ => {}
         }
@@ -1213,7 +1215,7 @@ impl App {
                         .iter()
                         .map(|&index| {
                             let m = &self.marks[index];
-                            Cell { index, rating: m.rating, rejected: m.rejected, color: m.color }
+                            Cell { index, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
                         })
                         .collect();
                     Entry::Photos(cells)
@@ -1418,7 +1420,7 @@ impl App {
         let mark = if m.rejected {
             "  ×".to_string()
         } else {
-            format!("  {}", "★".repeat(m.rating as usize))
+            format!("  {}{}", "★".repeat(m.rating as usize), if m.picked { "  ✓" } else { "" })
         };
         let quality = match self.shown {
             Some(Job { index, quality: Quality::Full }) if index == self.cur => "",
