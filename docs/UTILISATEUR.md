@@ -178,6 +178,19 @@ Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copié
 
 **Ctrl+X : les XMP seuls** (fonction cachée, sans bouton). Même sélection et même choix JPEG / RAW / Les deux que Ctrl+C, mais seuls les fichiers `.xmp` existants sont mis dans le presse-papiers, en copie (rien n'est déplacé). Usage : essayer un logiciel qui écrit ses propres `.xmp` sans salir le dossier trié dans Rafale. On copie les photos (Ctrl+C) dans un dossier d'essai, puis leurs `.xmp` (Ctrl+X), et le logiciel essayé y retrouve les marquages. Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
 
+## Retoucher la sélection
+
+Le bouton **« Retoucher… »**, à côté de « Copier », prépare la retouche en une seule action :
+
+1. il copie la même sélection que Ctrl+C (les photos filtrées si un filtre est actif, sinon les retenues), en JPEG, RAW ou les deux selon le choix en bas, **avec leurs `.xmp`** (notes et couleurs), dans un dossier **voisin** de la séance : `~/Images/2026-10-29-retouche/` ;
+2. il lance le logiciel de retouche sur ce dossier.
+
+Le logiciel ne voit que les photos choisies, et il écrit ses propres fichiers (`.pp3`, `.xmp` de darktable…) dans la copie : la séance triée et les originaux ne sont jamais touchés.
+
+- **Choix du logiciel :** au premier usage, une liste des logiciels installés (RawTherapee, darktable, Showfoto, XnView MP, gThumb, ou simplement Fichiers). Le choix est retenu (`~/.config/rafale/retouche`) ; **Maj+clic** sur le bouton pour en changer.
+- **Plusieurs passages :** une photo déjà copiée est sautée, et un `.xmp` déjà présent dans le dossier de retouche n'est jamais écrasé, car le logiciel a pu y écrire ses réglages.
+- darktable importe le dossier dans sa bibliothèque ; gThumb enregistre ses retouches par-dessus le fichier, ici la copie.
+
 ## Mettre les rejetées à la corbeille
 
 Quand des photos sont marquées rejetées (croix rouge, touche X ou R), un bouton rouge **« Corbeille : N rejetées »** apparaît en bas du panneau. Il met à la corbeille de GNOME, pour chaque photo rejetée :

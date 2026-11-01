@@ -7,6 +7,7 @@ mod raw;
 mod meta;
 mod panel;
 mod render;
+mod retouch;
 mod sharp;
 
 use std::num::NonZeroUsize;
@@ -40,6 +41,14 @@ const DEFAULT_FPS: f64 = 25.0;
 const FLAT_MAX: usize = 300;
 /// Vue au lancement : à plat, sauf si une rafale dépasse ce nombre de photos.
 const FLAT_BURST_MAX: usize = 5;
+
+/// Action qui attend la réponse d'une fenêtre zenity.
+enum Pending {
+    /// Fichiers à mettre à la corbeille si la confirmation est acceptée.
+    Trash(Vec<PathBuf>),
+    /// Choix du logiciel de retouche.
+    Editor,
+}
 
 struct Burst {
     start: usize,
@@ -131,10 +140,10 @@ struct App {
     modifiers: Modifiers,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
     help: Option<Child>,
-    /// Fichiers à mettre à la corbeille, en attente de la réponse à la confirmation
-    /// (fenêtre zenity ouverte), puis réponse reçue.
-    trash_pending: Option<Vec<PathBuf>>,
-    trash_answer: Option<bool>,
+    /// Action en attente de la réponse d'une fenêtre zenity, puis réponse reçue
+    /// (acceptée, et ce que la fenêtre a écrit sur sa sortie).
+    modal: Option<Pending>,
+    answer: Option<(bool, String)>,
     /// Décalage de la liste à la molette (en lignes), remis à zéro au changement
     /// de ligne courante (rafale, ou rangée en vue à plat).
     list_offset: isize,
@@ -225,8 +234,8 @@ impl App {
             copy_message: String::new(),
             modifiers: Modifiers::default(),
             help: None,
-            trash_pending: None,
-            trash_answer: None,
+            modal: None,
+            answer: None,
             list_offset: 0,
             list_group: None,
             list_key: String::new(),
@@ -512,19 +521,75 @@ impl App {
         }
     }
 
-    /// Fenêtre modale (aide, confirmation) encore ouverte ? À sa fermeture, la
-    /// réponse d'une confirmation de corbeille est notée pour `update`.
+    /// Fenêtre modale (aide, confirmation, choix) encore ouverte ? À sa fermeture,
+    /// la réponse d'une action en attente est notée pour `update`.
     fn help_open(&mut self) -> bool {
-        let status = match self.help.as_mut().map(|c| c.try_wait()) {
-            Some(Ok(None)) => return true,
-            Some(Ok(Some(status))) => Some(status.success()),
-            _ => None,
+        let Some(child) = self.help.as_mut() else { return false };
+        let status = match child.try_wait() {
+            Ok(None) => return true,
+            Ok(Some(status)) => status.success(),
+            Err(_) => false,
         };
+        let mut out = String::new();
+        if let Some(mut stdout) = child.stdout.take() {
+            use std::io::Read;
+            let _ = stdout.read_to_string(&mut out);
+        }
         self.help = None;
-        if self.trash_pending.is_some() {
-            self.trash_answer = Some(status == Some(true));
+        if self.modal.is_some() {
+            self.answer = Some((status, out.trim().to_owned()));
         }
         false
+    }
+
+    /// « Retoucher… » : copie la sélection à côté de la séance et y lance le
+    /// logiciel retenu ; au premier usage, ou avec Maj, demande lequel.
+    fn retouch(&mut self, choose: bool) {
+        if self.help_open() {
+            return;
+        }
+        match retouch::saved_editor().filter(|_| !choose) {
+            Some(editor) => self.retouch_with(&editor),
+            None if retouch::installed_editors().is_empty() => {
+                self.copy_message = "aucun logiciel de retouche trouvé".into();
+            }
+            None => match retouch::chooser().stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+                Ok(c) => {
+                    self.help = Some(c);
+                    self.modal = Some(Pending::Editor);
+                }
+                Err(e) => log::warn!("zenity : {e}"),
+            },
+        }
+    }
+
+    fn retouch_with(&mut self, editor: &str) {
+        let mut photos = Vec::new();
+        for i in self.selection() {
+            if self.copy_kind != CopyKind::Raw {
+                photos.push(self.files[i].clone());
+            }
+            if self.copy_kind != CopyKind::Jpeg {
+                photos.extend(self.raws[i].clone());
+            }
+        }
+        if photos.is_empty() {
+            self.copy_message = "sélection vide".into();
+            return;
+        }
+        let dest = retouch::destination(&self.dir);
+        let folder = dest.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        self.copy_message = match retouch::copy(&photos, &dest).and_then(|c| retouch::launch(editor, &dest).map(|()| c)) {
+            Ok(c) => {
+                let already = if c.already > 0 { format!(" ({} déjà là)", c.already) } else { String::new() };
+                format!("{} fichiers copiés{already} dans {folder} : {}", c.photos, retouch::editor_name(editor))
+            }
+            Err(e) => {
+                log::error!("retouche : {e}");
+                format!("échec : {e}")
+            }
+        };
+        log::info!("retouche : {}", self.copy_message);
     }
 
     /// Photos marquées rejetées (croix rouge), et tous leurs fichiers : JPEG,
@@ -575,20 +640,29 @@ impl App {
         match child {
             Ok(c) => {
                 self.help = Some(c);
-                self.trash_pending = Some(files);
+                self.modal = Some(Pending::Trash(files));
             }
             Err(e) => log::warn!("zenity : {e}"),
         }
     }
 
-    /// Après la confirmation : corbeille, puis rechargement de la séance.
-    fn finish_trash(&mut self, event_loop: &ActiveEventLoop) {
-        let (Some(ok), Some(files)) = (self.trash_answer.take(), self.trash_pending.take()) else {
+    /// Réponse d'une fenêtre zenity : corbeille confirmée, ou logiciel choisi.
+    fn finish_pending(&mut self, event_loop: &ActiveEventLoop) {
+        let (Some((ok, out)), Some(pending)) = (self.answer.take(), self.modal.take()) else {
             return;
         };
-        if !ok {
-            return;
+        match pending {
+            Pending::Trash(files) if ok => self.finish_trash(files, event_loop),
+            Pending::Editor if ok && !out.is_empty() => {
+                retouch::save_editor(&out);
+                self.retouch_with(&out);
+            }
+            _ => {}
         }
+    }
+
+    /// Après la confirmation : corbeille, puis rechargement de la séance.
+    fn finish_trash(&mut self, files: Vec<PathBuf>, event_loop: &ActiveEventLoop) {
         let status = Command::new("gio").arg("trash").arg("--").args(&files).status();
         match status {
             Ok(s) if s.success() => log::info!("{} fichiers mis à la corbeille", files.len()),
@@ -799,6 +873,7 @@ impl App {
             }
             Widget::Copy => return self.copy_selection(),
             Widget::Trash => return self.ask_trash(),
+            Widget::Retouch => return self.retouch(self.modifiers.state().shift_key()),
             Widget::Photo(_) => return,
         }
         self.set_filter(f);
@@ -1361,8 +1436,8 @@ impl App {
     /// Une itération de la logique, après chaque lot d'événements.
     fn update(&mut self, event_loop: &ActiveEventLoop) {
         self.help_open();
-        if self.trash_answer.is_some() {
-            return self.finish_trash(event_loop);
+        if self.answer.is_some() {
+            return self.finish_pending(event_loop);
         }
         while let Ok((index, meta)) = self.scan_rx.try_recv() {
             self.add_meta(index, meta);
