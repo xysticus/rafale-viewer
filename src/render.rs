@@ -74,6 +74,8 @@ pub struct Renderer {
     linear: wgpu::Sampler,
     nearest: wgpu::Sampler,
     border: Quad,
+    /// Bordure de la loupe figée : bleue, comme la photo active.
+    border_pinned: Quad,
     /// Repère de position dans la rafale courante (rectangle blanc).
     marker: Quad,
     marker_rect: Option<Rect>,
@@ -207,6 +209,8 @@ impl Renderer {
         let nearest = device.create_sampler(&Default::default());
         let border = upload(&device, &queue, &[190, 190, 190, 255], 1, 1);
         let border = make_quad(&device, &layout, &nearest, &border);
+        let border_pinned = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
+        let border_pinned = make_quad(&device, &layout, &nearest, &border_pinned);
         // Photo active : bleu, en vue rafales (repère) comme à plat (cadre).
         let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
         let marker = make_quad(&device, &layout, &nearest, &blue);
@@ -227,6 +231,7 @@ impl Renderer {
             linear,
             nearest,
             border,
+            border_pinned,
             marker,
             marker_rect: None,
             frame,
@@ -306,6 +311,18 @@ impl Renderer {
             w,
             h,
         })
+    }
+
+    /// Point de l'écran en proportions de la photo affichée (0..1), s'il est sur la photo.
+    pub fn image_point(&self, screen: (f32, f32)) -> Option<(f32, f32)> {
+        let r = self.image_rect()?;
+        r.contains(screen).then(|| ((screen.0 - r.x) / r.w, (screen.1 - r.y) / r.h))
+    }
+
+    /// Inverse de `image_point`.
+    pub fn screen_point(&self, (u, v): (f32, f32)) -> Option<(f32, f32)> {
+        let r = self.image_rect()?;
+        Some((r.x + u * r.w, r.y + v * r.h))
     }
 
     /// Largeur du panneau d'informations, à droite de la fenêtre.
@@ -392,8 +409,9 @@ impl Renderer {
         Some((dst, src))
     }
 
-    /// Dessine la vue ; renvoie `true` si la loupe est affichée.
-    pub fn render(&mut self, loupe_at: Option<(f32, f32)>) -> bool {
+    /// Dessine la vue ; renvoie `true` si la loupe suit le pointeur (qu'il faut
+    /// alors masquer). Une loupe figée (`pinned`) a une bordure bleue.
+    pub fn render(&mut self, loupe_at: Option<(f32, f32)>, pinned: bool) -> bool {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
@@ -474,11 +492,12 @@ impl Renderer {
                     w: dst.w + 2.0 * b,
                     h: dst.h + 2.0 * b,
                 };
-                self.place(&self.border, frame, full_src, 1);
+                let border = if pinned { &self.border_pinned } else { &self.border };
+                self.place(border, frame, full_src, 1);
                 self.place(&s.loupe, dst, src, s.orientation);
-                draws.push(&self.border);
+                draws.push(border);
                 draws.push(&s.loupe);
-                loupe = true;
+                loupe = !pinned;
             }
         }
 
