@@ -61,7 +61,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 - le nom du fichier, puis l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
 - le RAW associé, la position dans le dossier, la rafale, la place dans la rafale et le rythme.
 
-**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait blanc sous ses vignettes montre où tu en es.
+**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
 
 **En bas, la barre de filtre** (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
 
