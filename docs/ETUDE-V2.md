@@ -32,6 +32,20 @@ En rouvrant un dossier, revenir à la photo où on s'était arrêté, pour un tr
 
 Copier la carte vers `~/Images/AAAA-MM-JJ`, en rangeant les RAW dans `raw/`, puis ouvrir le dossier. Utile seulement si ce rangement se fait aujourd'hui à la main.
 
+## Essai : interface GTK4 / libadwaita
+
+Question : une interface en vrais widgets GNOME ralentirait-elle le défilé ? Essai sur la branche `essai-gtk4` : programme `rafale-gtk` avec le même chargeur, le même décodage et la même logique de pas, mais la photo dans un `GtkPicture` et le panneau en widgets Adwaita (sans loupe, cadres, orientation ni liste de vignettes). Mesures avec `--bench-scroll 5`, séance du 29/10, écran 144 Hz :
+
+| Cadence visée | winit + wgpu (actuel) | GTK4 + libadwaita |
+|---|---|---|
+| 25 i/s | 25,0 ; intervalles 40,0 ms, 0 à-coup | 25,0 ; intervalles 40,8 ms (p95 42, max 45), 0 à-coup |
+| 50 i/s | 50,0 ; intervalles 20,0 ms, 0 à-coup | 50,0 ; intervalles 24 ms (p95 27, max 36), 3 à 5 à-coups sur 220 |
+| 60 i/s | 60,0 ; intervalles 16,7 ms, 0 à-coup | 60,0 en moyenne, mais 86 à 102 à-coups sur 264 (p95 29 ms) |
+
+Pleine résolution, processeur et mémoire : équivalents. Conclusion provisoire : à 25 i/s, GTK ne ralentit pas ; il a moins de marge à cadence élevée. L'aspect GNOME plaît. À trancher après un essai sur le M7 Ultra (processeur bridé), avec les mêmes commandes sur la branche `essai-gtk4`.
+
+Effet de bord de l'essai : les « flashs » au début de la séance venaient d'exports (digiKam `_v1`, darktable `-1`) intercalés dans le défilé et d'une photo écrasée par un recadrage de gThumb (PA290088, restaurée depuis le SSD) ; rangés dans `exports/`.
+
 ## Abandonné
 
 - **Sélection multiple de vignettes** (Ctrl+clic, Maj+clic, Ctrl+A), pour la copie puis pour marquer plusieurs photos d'un coup. Elle a été réalisée, essayée, puis retirée : pas assez pratique pour la complexité qu'elle ajoute. La copie passe par le filtre ou les retenues.

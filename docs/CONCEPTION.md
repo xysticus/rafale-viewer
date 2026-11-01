@@ -101,6 +101,12 @@ Ce qu'on en tire :
 
 Choix de turbojpeg plutôt que zune-jpeg : la réduction DCT native (1/2, 1/4, 1/8). Fedora sépare l'API TurboJPEG (`turbojpeg-devel`) de `libjpeg-turbo-devel`. Faute de pkg-config, le crate `turbojpeg-sys` compile libjpeg-turbo en statique, ce qui demande cmake et nasm.
 
+### 4.1 Défilé chronométré (`--bench-scroll S`)
+
+`bench.rs` simule un appui maintenu sur → : il attend la première pleine résolution plus 1,5 s (préchargement), maintient S secondes, relâche, attend la pleine résolution, puis affiche cadence établie (hors 0,6 s de démarrage), intervalles entre images (moyen, médian, p95, max), à-coups (> 1,5 × l'intervalle visé), images d'écran produites et délai de la pleine résolution. Référence sur le PC de développement (Ryzen 12 threads, RX 9060 XT, NVMe, écran 144 Hz), séance du 29/10 en cache : 25,0 i/s et 60,0 i/s sans aucun à-coup, intervalles à ±0,2 ms, pleine résolution en 230 à 280 ms.
+
+Le chargeur et l'analyse des en-têtes réveillent la boucle principale par une fonction (`loader::Waker`) et non par un `EventLoopProxy` winit : ils servent tels quels à l'essai GTK (branche `essai-gtk4`).
+
 ## 5. Rendu
 
 ### 5.1 Un seul pipeline, des quads
