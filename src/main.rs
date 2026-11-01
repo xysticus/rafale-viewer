@@ -1,5 +1,6 @@
 mod bench;
 mod help;
+mod import;
 mod loader;
 mod marks;
 mod raw;
@@ -1816,6 +1817,14 @@ fn main() {
     let Some(target) = target.or_else(pick_folder) else {
         return;
     };
+    // Une carte mémoire (dossier DCIM) : import, puis ouverture du jour importé.
+    let target = match target.is_dir().then(|| import::find_dcim(&target)).flatten() {
+        Some(dcim) => match import_card(&dcim) {
+            Some(day) => day,
+            None => return,
+        },
+        None => target,
+    };
     // Une photo donnée : son dossier, en commençant par elle.
     let (dir, start_file) = if target.is_file() {
         let dir = target.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
@@ -1844,6 +1853,40 @@ fn main() {
         .expect("boucle d'événements");
     let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps, bench);
     event_loop.run_app(&mut app).expect("boucle d'événements");
+}
+
+/// Import d'une carte : résumé et confirmation, copie avec progression.
+/// Renvoie le dossier du jour à ouvrir ensuite, ou None (annulé, rien à ouvrir).
+fn import_card(dcim: &Path) -> Option<PathBuf> {
+    let plan = import::plan(dcim, &import::pictures_dir());
+    let latest = plan.latest_day();
+    let ask = |text: &str, ok: &str| {
+        Command::new("zenity")
+            .args(["--question", "--no-markup", "--title", "Rafale — carte mémoire", "--width", "560"])
+            .args(["--text", text, "--ok-label", ok, "--cancel-label", "Annuler"])
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    if plan.is_empty() {
+        let open = latest.as_ref().filter(|d| d.is_dir())?;
+        return ask(&format!("{}\n\nOuvrir {} ?", plan.summary(), open.display()), "Ouvrir").then(|| open.clone());
+    }
+    if !ask(&plan.summary(), "Importer") {
+        return None;
+    }
+    match plan.run() {
+        Ok(n) => {
+            log::info!("{n} fichiers importés");
+            latest
+        }
+        Err(e) if e == "annulé" => {
+            let _ = Command::new("zenity")
+                .args(["--info", "--no-markup", "--title", "Rafale", "--text", "Import interrompu. Les fichiers déjà copiés sont complets ; relancer l'import copiera le reste."])
+                .status();
+            None
+        }
+        Err(e) => fail(&format!("Import : {e}")),
+    }
 }
 
 /// Choix d'un dossier de photos (zenity) ; None si l'utilisateur annule.

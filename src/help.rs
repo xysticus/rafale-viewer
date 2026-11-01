@@ -61,6 +61,13 @@ leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3 de \
 RawTherapee). Une fenêtre demande d'abord confirmation, avec le nombre de fichiers \
 et la place libérée. Tout reste récupérable dans la corbeille.
 
+IMPORTER UNE CARTE
+
+• Ouvre la carte mémoire avec Rafale (Fichiers : clic droit › Ouvrir avec › Rafale). \
+Après un résumé et une confirmation, ses JPEG sont copiés dans ~/Images/AAAA-MM-JJ \
+(jour de prise de vue) et ses RAW dans raw/, puis Rafale s'ouvre sur le jour \
+importé. Les fichiers déjà importés sont sautés ; la carte n'est pas modifiée.
+
 FILTRER
 
 • La barre du bas filtre par note minimale, couleur, retenue ou rejet. Le défilé, \
