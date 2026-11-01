@@ -13,6 +13,7 @@ DÉFILER SANS RIEN MANQUER
 • Maintiens → ou ← : les photos défilent en continu, à la cadence de la rafale \
 (25 i/s par défaut, option --fps). Aucune n'est sautée : si le disque ne suit pas, \
 le défilé ralentit au lieu de sauter des photos.
+• En rouvrant un dossier, Rafale repart de la dernière photo vue.
 • Pendant le défilé, les photos sont en aperçu réduit. Au relâchement, la pleine \
 résolution arrive en un quart de seconde.
 • À l'arrêt, pose le pointeur sur la photo : une loupe 100 % montre les pixels réels. \

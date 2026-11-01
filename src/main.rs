@@ -1595,6 +1595,12 @@ impl ApplicationHandler for App {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         // Arrête les threads de décodage avant de libérer le GPU.
         self.loader = None;
+        // Reprise à cette photo à la prochaine ouverture du dossier (pas en mesure).
+        if self.bench.is_none() {
+            if let Some(name) = self.files[self.cur].file_name().and_then(|n| n.to_str()) {
+                positions::save(&self.dir, name);
+            }
+        }
     }
 }
 
@@ -1705,6 +1711,56 @@ fn is_companion(file: &str, name: &str, stem: &str) -> bool {
     rest == ".xmp" || rest == ".pp3"
 }
 
+/// Dernière photo vue dans chaque dossier, gardée hors du dossier des photos :
+/// `~/.local/state/rafale/positions`, une ligne « dossier<TAB>photo » par dossier,
+/// la plus récente en tête.
+mod positions {
+    use std::path::{Path, PathBuf};
+
+    const KEEP: usize = 200;
+
+    fn file() -> Option<PathBuf> {
+        let base = std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
+        Some(base.join("rafale/positions"))
+    }
+
+    fn key(dir: &Path) -> Option<String> {
+        let dir = std::fs::canonicalize(dir).ok()?;
+        dir.to_str().filter(|s| !s.contains(['\t', '\n'])).map(str::to_owned)
+    }
+
+    fn read() -> Vec<(String, String)> {
+        let Some(text) = file().and_then(|f| std::fs::read_to_string(f).ok()) else { return Vec::new() };
+        text.lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(d, n)| (d.to_owned(), n.to_owned()))
+            .collect()
+    }
+
+    pub fn load(dir: &Path) -> Option<String> {
+        let key = key(dir)?;
+        read().into_iter().find(|(d, _)| *d == key).map(|(_, n)| n)
+    }
+
+    pub fn save(dir: &Path, name: &str) {
+        let (Some(key), Some(file)) = (key(dir), file()) else { return };
+        if name.contains(['\t', '\n']) {
+            return;
+        }
+        let mut lines = vec![(key.clone(), name.to_owned())];
+        lines.extend(read().into_iter().filter(|(d, _)| *d != key).take(KEEP - 1));
+        let text: String = lines.iter().map(|(d, n)| format!("{d}\t{n}\n")).collect();
+        let ok = file.parent().is_some_and(|p| std::fs::create_dir_all(p).is_ok())
+            && std::fs::write(file.with_extension("tmp"), text).is_ok()
+            && std::fs::rename(file.with_extension("tmp"), &file).is_ok();
+        if !ok {
+            log::warn!("position non enregistrée dans {}", file.display());
+        }
+    }
+}
+
 /// Images visibles (liste triée) parmi `start..start + len`.
 fn visible_in(visible: &[usize], start: usize, len: usize) -> &[usize] {
     let a = visible.partition_point(|&v| v < start);
@@ -1772,11 +1828,14 @@ fn main() {
         Ok(_) => fail(&format!("Aucune photo JPEG dans {}", dir.display())),
         Err(e) => fail(&format!("{} : {e}", dir.display())),
     };
-    let start = start_file
-        .and_then(|f| {
-            let name = f.file_name()?;
-            files.iter().position(|p| p.file_name() == Some(name))
-        })
+    // Départ : la photo demandée, sinon la dernière vue dans ce dossier, sinon la première.
+    let wanted = match start_file {
+        Some(f) => f.file_name().map(|n| n.to_os_string()),
+        None if bench.is_none() => positions::load(&dir).map(Into::into),
+        None => None,
+    };
+    let start = wanted
+        .and_then(|name| files.iter().position(|p| p.file_name() == Some(name.as_os_str())))
         .unwrap_or(0);
     log::info!("{} JPEG dans {}", files.len(), dir.display());
 
@@ -1821,6 +1880,25 @@ mod tests {
         for f in ["PA290002.ORF", "PA290001.JPG", "PA290001.ORF.jpg", "PA2900011.ORF.xmp", "PA290001_v1.JPG", "PA290001.ORF_x.xmp"] {
             assert!(!c(f, n, s), "{f}");
         }
+    }
+
+    #[test]
+    fn position_par_dossier() {
+        let base = std::env::temp_dir().join(format!("rafale-positions-{}", std::process::id()));
+        let (a, b) = (base.join("a"), base.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        // Seul test à toucher à cette variable.
+        unsafe { std::env::set_var("XDG_STATE_HOME", base.join("state")) };
+        assert_eq!(super::positions::load(&a), None);
+        super::positions::save(&a, "P1.JPG");
+        super::positions::save(&b, "P2.JPG");
+        super::positions::save(&a, "P3.JPG");
+        assert_eq!(super::positions::load(&a).as_deref(), Some("P3.JPG"));
+        assert_eq!(super::positions::load(&b).as_deref(), Some("P2.JPG"));
+        let text = std::fs::read_to_string(base.join("state/rafale/positions")).unwrap();
+        assert_eq!(text.lines().count(), 2, "une ligne par dossier, la plus récente en tête : {text}");
+        assert!(text.starts_with(a.canonicalize().unwrap().to_str().unwrap()));
     }
 
     #[test]
