@@ -52,6 +52,14 @@ elles-mêmes ne sont jamais modifiées.
 • darktable, digiKam, RawTherapee et Lightroom lisent ces fichiers. Un XMP qui \
 contient le travail d'un autre logiciel (retouches, mots-clés…) n'est jamais modifié.
 
+METTRE LES REJETÉES À LA CORBEILLE
+
+• Le bouton rouge « Corbeille : N rejetées » (en bas, seulement s'il y en a) met \
+à la corbeille de GNOME les photos marquées de la croix rouge : JPEG, RAW, et tous \
+leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3 de \
+RawTherapee). Une fenêtre demande d'abord confirmation, avec le nombre de fichiers \
+et la place libérée. Tout reste récupérable dans la corbeille.
+
 FILTRER
 
 • La barre du bas filtre par note minimale, couleur, retenue ou rejet. Le défilé, \
@@ -130,4 +138,5 @@ Clic sur une rafale ou une vignette : y aller
 Molette sur le panneau, ou ascenseur : faire défiler la liste
 JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
 Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
+Corbeille : N rejetées : met les photos rejetées à la corbeille (après confirmation)
 ";

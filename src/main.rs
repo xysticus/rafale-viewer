@@ -63,6 +63,7 @@ const SCROLLBAR_WIDTH: f32 = 6.0;
 const SCROLLBAR_GRAB: f32 = 8.0;
 
 struct App {
+    dir: PathBuf,
     files: Arc<Vec<PathBuf>>,
     marks: Vec<Mark>,
     /// RAW associé à chaque JPEG (même nom), et si son XMP appartient à un autre logiciel.
@@ -129,6 +130,10 @@ struct App {
     modifiers: Modifiers,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
     help: Option<Child>,
+    /// Fichiers à mettre à la corbeille, en attente de la réponse à la confirmation
+    /// (fenêtre zenity ouverte), puis réponse reçue.
+    trash_pending: Option<Vec<PathBuf>>,
+    trash_answer: Option<bool>,
     /// Décalage de la liste à la molette (en lignes), remis à zéro au changement
     /// de ligne courante (rafale, ou rangée en vue à plat).
     list_offset: isize,
@@ -175,6 +180,7 @@ impl App {
         let raw_foreign = sync_raws(&marks, &raws);
         let now = Instant::now();
         App {
+            dir,
             metas: (0..files.len()).map(|_| None).collect(),
             files,
             marks,
@@ -218,6 +224,8 @@ impl App {
             copy_message: String::new(),
             modifiers: Modifiers::default(),
             help: None,
+            trash_pending: None,
+            trash_answer: None,
             list_offset: 0,
             list_group: None,
             list_key: String::new(),
@@ -503,13 +511,119 @@ impl App {
         }
     }
 
-    /// Fenêtre d'aide encore ouverte ?
+    /// Fenêtre modale (aide, confirmation) encore ouverte ? À sa fermeture, la
+    /// réponse d'une confirmation de corbeille est notée pour `update`.
     fn help_open(&mut self) -> bool {
-        let open = self.help.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
-        if !open {
-            self.help = None;
+        let status = match self.help.as_mut().map(|c| c.try_wait()) {
+            Some(Ok(None)) => return true,
+            Some(Ok(Some(status))) => Some(status.success()),
+            _ => None,
+        };
+        self.help = None;
+        if self.trash_pending.is_some() {
+            self.trash_answer = Some(status == Some(true));
         }
-        open
+        false
+    }
+
+    /// Photos marquées rejetées (croix rouge), et tous leurs fichiers : JPEG,
+    /// RAW et fichiers d'accompagnement de chacun.
+    fn rejected_files(&self) -> (usize, Vec<PathBuf>) {
+        let rejected: Vec<usize> = (0..self.files.len()).filter(|&i| self.marks[i].rejected).collect();
+        let mut files = Vec::new();
+        for &i in &rejected {
+            files.extend(companions(&self.files[i]));
+            if let Some(raw) = &self.raws[i] {
+                files.extend(companions(raw));
+            }
+        }
+        files.sort();
+        files.dedup();
+        (rejected.len(), files)
+    }
+
+    /// Bouton « Corbeille » : demande confirmation (fenêtre zenity, non bloquante).
+    fn ask_trash(&mut self) {
+        if self.help_open() {
+            return;
+        }
+        let (photos, files) = self.rejected_files();
+        if files.is_empty() {
+            return;
+        }
+        let is_photo = |p: &PathBuf| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| !e.eq_ignore_ascii_case("xmp") && !e.eq_ignore_ascii_case("pp3"))
+        };
+        let images = files.iter().filter(|p| is_photo(p)).count();
+        let bytes: u64 = files.iter().filter_map(|p| p.metadata().ok()).map(|m| m.len()).sum();
+        let text = format!(
+            "Mettre à la corbeille les {photos} photos rejetées ?\n\n\
+             {images} fichiers photo (JPEG et RAW) et {} fichiers d'accompagnement \
+             (XMP, PP3), soit {:.0} Mo.\n\nIls restent récupérables dans la corbeille de GNOME.",
+            files.len() - images,
+            bytes as f64 / 1e6
+        );
+        let child = Command::new("zenity")
+            .args(["--question", "--title", "Rafale", "--icon", "user-trash", "--text", &text])
+            .args(["--ok-label", "Mettre à la corbeille", "--cancel-label", "Annuler"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match child {
+            Ok(c) => {
+                self.help = Some(c);
+                self.trash_pending = Some(files);
+            }
+            Err(e) => log::warn!("zenity : {e}"),
+        }
+    }
+
+    /// Après la confirmation : corbeille, puis rechargement de la séance.
+    fn finish_trash(&mut self, event_loop: &ActiveEventLoop) {
+        let (Some(ok), Some(files)) = (self.trash_answer.take(), self.trash_pending.take()) else {
+            return;
+        };
+        if !ok {
+            return;
+        }
+        let status = Command::new("gio").arg("trash").arg("--").args(&files).status();
+        match status {
+            Ok(s) if s.success() => log::info!("{} fichiers mis à la corbeille", files.len()),
+            Ok(s) => log::error!("gio trash : {s}"),
+            Err(e) => log::error!("gio trash : {e}"),
+        }
+        // Repartir de la photo affichée, ou de la suivante qui reste.
+        let start = self.files[self.cur..].iter().chain(self.files[..self.cur].iter().rev()).find(|p| p.exists()).cloned();
+        self.reload(start, event_loop);
+    }
+
+    /// Relit le dossier (photos retirées) sans fermer la fenêtre ; garde le filtre,
+    /// la vue et les réglages de copie et de loupe.
+    fn reload(&mut self, start: Option<PathBuf>, event_loop: &ActiveEventLoop) {
+        let files = list_jpegs(&self.dir).unwrap_or_default();
+        if files.is_empty() {
+            return event_loop.exit();
+        }
+        let start = start.and_then(|s| files.iter().position(|f| *f == s)).unwrap_or(0);
+        let fps = 1.0 / self.step_interval.as_secs_f64();
+        let mut next = App::new(self.dir.clone(), files, start, self.proxy.clone(), fps, None);
+        next.window = self.window.take();
+        next.renderer = self.renderer.take();
+        next.filter = self.filter;
+        next.flat = self.flat;
+        next.flat_chosen = self.flat_chosen;
+        next.copy_kind = self.copy_kind;
+        next.af_loupe = self.af_loupe;
+        next.af_frame = self.af_frame;
+        next.refresh_visible();
+        // L'ancien chargeur s'arrête (ses threads finissent leur tâche) à la suppression.
+        *self = next;
+        self.loader = Some(Loader::new(self.files.clone(), waker(&self.proxy)));
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
     }
 
     /// Début de la rafale précédente ou suivante (qui a des images visibles).
@@ -683,6 +797,7 @@ impl App {
                 return;
             }
             Widget::Copy => return self.copy_selection(),
+            Widget::Trash => return self.ask_trash(),
             Widget::Photo(_) => return,
         }
         self.set_filter(f);
@@ -1076,7 +1191,9 @@ impl App {
             self.marks.iter().filter(|m| m.retained()).count()
         };
         let what = if filtering { "filtrées" } else { "retenues" };
+        let rejected = self.marks.iter().filter(|m| m.rejected).count();
         let view = View {
+            trash_label: (rejected > 0).then(|| format!("Corbeille : {rejected} rejetée{}", if rejected > 1 { "s" } else { "" })),
             flat_available: self.files.len() < FLAT_MAX,
             flat,
             copy_kind: self.copy_kind,
@@ -1242,6 +1359,10 @@ impl App {
 
     /// Une itération de la logique, après chaque lot d'événements.
     fn update(&mut self, event_loop: &ActiveEventLoop) {
+        self.help_open();
+        if self.trash_answer.is_some() {
+            return self.finish_trash(event_loop);
+        }
         while let Ok((index, meta)) = self.scan_rx.try_recv() {
             self.add_meta(index, meta);
         }
@@ -1548,6 +1669,42 @@ fn waker(proxy: &EventLoopProxy<()>) -> loader::Waker {
     })
 }
 
+/// Une photo et ses fichiers d'accompagnement, dans son dossier : `NOM.EXT`,
+/// `NOM.EXT.xmp` (Rafale, darktable, digiKam…), `NOM.EXT_01.xmp` (doublons
+/// darktable), `NOM.xmp` (autres logiciels) et `NOM.EXT.pp3` (RawTherapee).
+fn companions(photo: &Path) -> Vec<PathBuf> {
+    let (Some(dir), Some(name), Some(stem)) = (
+        photo.parent(),
+        photo.file_name().and_then(|n| n.to_str()),
+        photo.file_stem().and_then(|s| s.to_str()),
+    ) else {
+        return vec![photo.to_path_buf()];
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return vec![photo.to_path_buf()];
+    };
+    rd.filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .filter(|e| e.file_name().to_str().is_some_and(|n| is_companion(n, name, stem)))
+        .map(|e| e.path())
+        .collect()
+}
+
+fn is_companion(file: &str, name: &str, stem: &str) -> bool {
+    if file == name || file.eq_ignore_ascii_case(&format!("{stem}.xmp")) {
+        return true;
+    }
+    let Some(rest) = file.strip_prefix(name) else {
+        return false;
+    };
+    let rest = rest.to_ascii_lowercase();
+    let rest = match rest.strip_prefix('_') {
+        Some(r) => r.trim_start_matches(|c: char| c.is_ascii_digit()),
+        None => rest.as_str(),
+    };
+    rest == ".xmp" || rest == ".pp3"
+}
+
 /// Images visibles (liste triée) parmi `start..start + len`.
 fn visible_in(visible: &[usize], start: usize, len: usize) -> &[usize] {
     let a = visible.partition_point(|&v| v < start);
@@ -1654,6 +1811,18 @@ fn fail(message: &str) -> ! {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fichiers_d_accompagnement() {
+        use super::is_companion as c;
+        let (n, s) = ("PA290001.ORF", "PA290001");
+        for f in ["PA290001.ORF", "PA290001.ORF.xmp", "PA290001.ORF_01.xmp", "PA290001.xmp", "PA290001.ORF.pp3", "PA290001.ORF.XMP"] {
+            assert!(c(f, n, s), "{f}");
+        }
+        for f in ["PA290002.ORF", "PA290001.JPG", "PA290001.ORF.jpg", "PA2900011.ORF.xmp", "PA290001_v1.JPG", "PA290001.ORF_x.xmp"] {
+            assert!(!c(f, n, s), "{f}");
+        }
+    }
+
     #[test]
     fn uri_encodee() {
         let p = std::path::Path::new("/home/a/Images/Pastré lumière/P#1.JPG");

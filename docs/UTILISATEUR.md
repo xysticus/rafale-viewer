@@ -164,6 +164,15 @@ Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copié
 
 **Ctrl+X : les XMP seuls** (fonction cachée, sans bouton). Même sélection et même choix JPEG / RAW / Les deux que Ctrl+C, mais seuls les fichiers `.xmp` existants sont mis dans le presse-papiers, en copie (rien n'est déplacé). Usage : essayer un logiciel qui écrit ses propres `.xmp` sans salir le dossier trié dans Rafale. On copie les photos (Ctrl+C) dans un dossier d'essai, puis leurs `.xmp` (Ctrl+X), et le logiciel essayé y retrouve les marquages. Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
 
+## Mettre les rejetées à la corbeille
+
+Quand des photos sont marquées rejetées (croix rouge, touche X ou R), un bouton rouge **« Corbeille : N rejetées »** apparaît en bas du panneau. Il met à la corbeille de GNOME, pour chaque photo rejetée :
+
+- le JPEG et le RAW ;
+- tous leurs fichiers d'accompagnement : `.xmp` de Rafale ou d'autres logiciels (y compris les doublons darktable `PA….ORF_01.xmp` et les `PA….xmp`), `.pp3` de RawTherapee.
+
+Une fenêtre demande d'abord confirmation, avec le nombre de fichiers et la place libérée. Seules les photos explicitement rejetées partent : une photo sans étoile n'est pas concernée. Rafale relit ensuite le dossier sans se fermer, en gardant le filtre et la vue. Tout reste récupérable dans la corbeille (Fichiers › Corbeille, ou `gio trash --restore`) jusqu'à ce qu'elle soit vidée.
+
 ## Rafales et réglages de l'appareil
 
 - **Rafales :** elles sont reconnues grâce au numéro de vue que les boîtiers OM System et Olympus inscrivent dans chaque fichier (1, 2, 3…). Une nouvelle rafale commence quand ce numéro repart à 1. Pour les autres appareils, Rafale se sert de l'heure de prise de vue : plus d'une seconde d'écart entre deux photos, et c'est une nouvelle rafale.

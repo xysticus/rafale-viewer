@@ -12,17 +12,14 @@ Principe commun à toutes les pistes : **ne jamais ralentir le défilé.** Tout 
 | 1 | Loupe figée | Un clic sur la photo fige la loupe à cet endroit pour toute la rafale ; clic droit, ou changement de rafale, pour la libérer. |
 | 2 | Zone AF | Cadre vert sur la zone de mise au point enregistrée par le boîtier (MakerNote OM, balise 0x030a). Elle suit le sujet vue par vue, le plus souvent le visage détecté. Touche C : afficher ou masquer le cadre. Touche A : loupe AF, qui suit la zone vue après vue. |
 | 3 | Netteté AF | Indice de netteté (variance du laplacien) sur la zone AF, mesuré à l'arrêt pour toute la rafale (~1 s pour 15 vues). Le panneau affiche le pourcentage de la plus nette et le rang. Touche N : aller à la plus nette. |
+| 4 | Corbeille des rejetées | Bouton rouge « Corbeille : N rejetées » : après confirmation (nombre de fichiers, place libérée), `gio trash` sur le JPEG, le RAW et tous leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3) des photos marquées de la croix rouge, et seulement celles-là. Rafale relit ensuite le dossier sans se fermer. |
 | 6 | Intégration à GNOME | `packaging/install.sh` installe dans `~/.local` le programme, une icône et un `.desktop` : entrée « Rafale » dans le menu, *Ouvrir avec… › Rafale* sur un dossier ou une photo. Sans argument, Rafale demande le dossier ; sur une photo, il ouvre son dossier en commençant par elle ; hors terminal, les erreurs s'affichent dans une fenêtre. |
 
 ## À faire
 
-### 4. Mettre les rejetées à la corbeille
-
-Envoyer à la corbeille de GNOME (`gio trash`, donc récupérable) les photos marquées rejetées, avec leur RAW et leurs `.xmp`, après une confirmation qui annonce le nombre de fichiers et la place libérée. Intérêt : une séance comme celle du 29/10 pèse 32 Go. Points à trancher : rejetées seulement, ou aussi les non retenues d'un dossier entièrement trié ; et le comportement si le RAW a un `.xmp` d'un autre logiciel (darktable).
-
 ### 5. « Ouvrir les retenues dans… »
 
-Un bouton qui lance le logiciel de retouche (RawTherapee, darktable…) directement sur les RAW retenus, ou sur la sélection filtrée. C'est la suite de la copie vers Fichiers. À trancher : quel logiciel par défaut, et comment le choisir (fichier de réglages, ou les applications enregistrées dans GNOME pour le type ORF).
+Décidé : option B. Un bouton « Retoucher… » copie la sélection (retenues, ou filtrées), selon le choix JPEG / RAW / Les deux, avec leurs `.xmp`, dans un dossier voisin de la séance (`~/Images/2026-10-29-retouche/`, pas un sous-dossier : Rafale y chercherait des RAW), puis lance le logiciel de retouche sur ce dossier. Le logiciel ne voit que les photos choisies et écrit ses fichiers dans sa copie ; la séance triée et les originaux restent intacts. Choix du logiciel au premier usage, parmi ceux installés qui ouvrent un dossier ou un RAW, puis retenu.
 
 ### 7. Reprise à la dernière photo vue
 
