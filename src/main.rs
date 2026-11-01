@@ -1333,6 +1333,10 @@ fn main() {
                     .unwrap_or_else(|| usage());
             }
             "-h" | "--help" => usage(),
+            "-V" | "--version" => {
+                println!("rafale-viewer {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
             _ if dir.is_none() => dir = Some(PathBuf::from(arg)),
             _ => usage(),
         }
@@ -1368,6 +1372,6 @@ mod tests {
 }
 
 fn usage() -> ! {
-    eprintln!("usage : rafale-viewer <dossier> [--fps N]");
+    eprintln!("usage : rafale-viewer <dossier> [--fps N] | --version");
     std::process::exit(2);
 }
