@@ -53,6 +53,8 @@ pub enum Widget {
     Copy,
     /// Mettre les photos rejetées à la corbeille.
     Trash,
+    /// Copier la sélection et l'ouvrir dans le logiciel de retouche.
+    Retouch,
 }
 
 /// Fichiers copiés pour chaque photo de la sélection.
@@ -524,6 +526,9 @@ impl Panel {
         x += 12.0;
         let w = canvas.button(&font, x, by, &view.copy_label, false);
         bar_hits.push(Hit { widget: Widget::Copy, x, y: by, w, h: BUTTON_H });
+        let x = x + w + 6.0;
+        let w = canvas.button(&font, x, by, "Retoucher…", false);
+        bar_hits.push(Hit { widget: Widget::Retouch, x, y: by, w, h: BUTTON_H });
         canvas.text(&font, x + w + 12.0, by + 17.0, max_x, &view.copy_message, 15.0, [150, 150, 150]);
 
         // Ligne de boutons : vue à gauche, aide à droite.

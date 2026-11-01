@@ -83,6 +83,15 @@ dans un dossier ouvert dans Fichiers y copie les fichiers.
 à n'importe quel logiciel de retouche un dossier qui ne contient que les photos \
 choisies, sans dépendre de sa façon de lire notes et étiquettes.
 
+RETOUCHER
+
+• « Retoucher… » copie la même sélection que Ctrl+C (JPEG, RAW ou les deux, avec \
+leurs XMP) dans un dossier voisin de la séance, par exemple 2026-10-29-retouche, \
+puis y lance le logiciel de retouche. Il ne voit que les photos choisies, et ses \
+fichiers restent dans la copie : la séance triée n'est pas touchée. Le logiciel \
+est demandé au premier usage, puis retenu ; Maj+clic pour en changer. Une photo \
+déjà copiée est sautée, et un XMP déjà présent n'est jamais écrasé.
+
 MÉTHODE CONSEILLÉE
 
 1. Défile chaque rafale touche maintenue, relâche sur les moments forts, vérifie \
@@ -145,6 +154,8 @@ Mêmes commandes en bas : filtre ; « effacer » supprime le filtre
 Clic sur une rafale ou une vignette : y aller
 Molette sur le panneau, ou ascenseur : faire défiler la liste
 JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
+« Retoucher… » : copie la sélection à côté de la séance et lance le logiciel de retouche
+Maj+clic sur « Retoucher… » : choisir un autre logiciel
 Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
 Corbeille : N rejetées : met les photos rejetées à la corbeille (après confirmation)
 ";
