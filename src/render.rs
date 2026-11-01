@@ -16,7 +16,7 @@ const BACKGROUND: wgpu::Color = wgpu::Color {
 };
 /// Côté de la loupe, en pixels écran (= pixels de l'image, à 100 %).
 /// Épaisseur du cadre de la vignette active.
-const FRAME_WIDTH: f32 = 3.0;
+const FRAME_WIDTH: f32 = 4.0;
 const LOUPE_SIZE: f32 = 600.0;
 const LOUPE_BORDER: f32 = 2.0;
 /// Le panneau occupe la place laissée par une image 4:3 en hauteur pleine.
@@ -207,9 +207,9 @@ impl Renderer {
         let nearest = device.create_sampler(&Default::default());
         let border = upload(&device, &queue, &[190, 190, 190, 255], 1, 1);
         let border = make_quad(&device, &layout, &nearest, &border);
-        let white = upload(&device, &queue, &[235, 235, 235, 255], 1, 1);
-        let marker = make_quad(&device, &layout, &nearest, &white);
+        // Photo active : bleu, en vue rafales (repère) comme à plat (cadre).
         let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
+        let marker = make_quad(&device, &layout, &nearest, &blue);
         let frame = std::array::from_fn(|_| make_quad(&device, &layout, &nearest, &blue));
         let track = upload(&device, &queue, &[40, 40, 40, 255], 1, 1);
         let track = make_quad(&device, &layout, &nearest, &track);
