@@ -14,16 +14,13 @@ Principe commun à toutes les pistes : **ne jamais ralentir le défilé.** Tout 
 | 3 | Netteté AF | Indice de netteté (variance du laplacien) sur la zone AF, mesuré à l'arrêt pour toute la rafale (~1 s pour 15 vues). Le panneau affiche le pourcentage de la plus nette et le rang. Touche N : aller à la plus nette. |
 | 4 | Corbeille des rejetées | Bouton rouge « Corbeille : N rejetées » : après confirmation (nombre de fichiers, place libérée), `gio trash` sur le JPEG, le RAW et tous leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3) des photos marquées de la croix rouge, et seulement celles-là. Rafale relit ensuite le dossier sans se fermer. |
 | 6 | Intégration à GNOME | `packaging/install.sh` installe dans `~/.local` le programme, une icône et un `.desktop` : entrée « Rafale » dans le menu, *Ouvrir avec… › Rafale* sur un dossier ou une photo. Sans argument, Rafale demande le dossier ; sur une photo, il ouvre son dossier en commençant par elle ; hors terminal, les erreurs s'affichent dans une fenêtre. |
+| 7 | Reprise à la dernière photo vue | À la fermeture, Rafale note la photo affichée dans `~/.local/state/rafale/positions` (une ligne par dossier, 200 au plus), rien dans le dossier des photos. À la réouverture du dossier, il repart de cette photo ; ouvrir une photo précise l'emporte. |
 
 ## À faire
 
 ### 5. « Ouvrir les retenues dans… »
 
 Décidé : option B. Un bouton « Retoucher… » copie la sélection (retenues, ou filtrées), selon le choix JPEG / RAW / Les deux, avec leurs `.xmp`, dans un dossier voisin de la séance (`~/Images/2026-10-29-retouche/`, pas un sous-dossier : Rafale y chercherait des RAW), puis lance le logiciel de retouche sur ce dossier. Le logiciel ne voit que les photos choisies et écrit ses fichiers dans sa copie ; la séance triée et les originaux restent intacts. Choix du logiciel au premier usage, parmi ceux installés qui ouvrent un dossier ou un RAW, puis retenu.
-
-### 7. Reprise à la dernière photo vue
-
-En rouvrant un dossier, revenir à la photo où on s'était arrêté, pour un tri fait en plusieurs fois. À trancher : où garder cette position sans créer de fichier dans le dossier des photos (par exemple `~/.local/state/rafale/`).
 
 ### 8. Import de la carte SD
 
