@@ -1,5 +1,6 @@
 //! Panneau de droite, rastérisé sur CPU et renvoyé au GPU seulement s'il change :
-//! informations sur l'image courante, puis liste des rafales avec vignettes.
+//! informations sur l'image courante, puis liste des rafales (ou grille de
+//! photos, en mode à plat) avec vignettes, et barre de filtre en bas.
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use crate::marks::Color;
 use crate::meta::Meta;
 
 pub const PADDING: f32 = 24.0;
-const THUMBS_PER_ROW: usize = 4;
+pub const THUMBS_PER_ROW: usize = 4;
 const THUMB_GAP: f32 = 8.0;
 const ROW_HEADER: f32 = 25.0;
 const ROW_GAP: f32 = 14.0;
@@ -25,8 +26,10 @@ const STAR_ON: [u8; 3] = [235, 190, 60];
 const OFF: [u8; 3] = [85, 85, 85];
 const CHECK_ON: [u8; 3] = [80, 175, 85];
 const REJECT_ON: [u8; 3] = [205, 70, 60];
-/// Hauteur de la barre de filtre en haut de la liste.
-pub const FILTER_BAR: f32 = CTRL + 16.0;
+/// Hauteur de la barre de filtre, puis de la ligne de boutons (vue, aide), en bas de la liste.
+const FILTER_BAR: f32 = CTRL + 16.0;
+const BUTTON_H: f32 = 24.0;
+pub const BOTTOM_BAR: f32 = FILTER_BAR + BUTTON_H + 14.0;
 
 /// Élément cliquable du panneau.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +39,14 @@ pub enum Widget {
     Check,
     Reject,
     ClearFilter,
+    /// Photo de la liste (début de rafale, ou vignette en mode à plat).
+    Photo(usize),
+    /// Vue de la liste : par rafales ou à plat.
+    Bursts,
+    Flat,
+    /// Fenêtres d'aide.
+    Principles,
+    Shortcuts,
 }
 
 /// État affiché par une rangée de commandes.
@@ -89,6 +100,39 @@ pub struct Row {
     pub marked: usize,
     /// Rafale de l'image courante.
     pub current: bool,
+}
+
+/// Une photo de la grille, en mode à plat.
+#[derive(Debug, PartialEq)]
+pub struct Cell {
+    pub index: usize,
+    pub rating: u8,
+    pub rejected: bool,
+    pub color: Option<Color>,
+}
+
+/// Une ligne de la liste : une rafale, ou une rangée de photos (mode à plat).
+#[derive(Debug, PartialEq)]
+pub enum Entry {
+    Burst(Row),
+    Photos(Vec<Cell>),
+}
+
+/// Boutons de vue : le mode à plat n'est proposé que pour les petits dossiers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct View {
+    pub flat_available: bool,
+    pub flat: bool,
+}
+
+/// Emplacement du repère de position sous les photos `start..start + len` : (x, y, largeur).
+#[derive(Debug, Clone, Copy)]
+pub struct Track {
+    pub start: usize,
+    pub len: usize,
+    pub x: f32,
+    pub y: f32,
+    pub span: f32,
 }
 
 /// Image RGBA (alpha = couverture) en cours de composition.
@@ -234,6 +278,43 @@ impl Canvas {
         hits
     }
 
+    /// Bouton texte ; renvoie sa largeur.
+    fn button(&mut self, font: &Font, x: f32, y: f32, label: &str, on: bool) -> f32 {
+        let w = button_width(font, label);
+        if on {
+            self.rect(x, y, w, BUTTON_H, [255, 255, 255], 0.16);
+        } else {
+            for (rx, ry, rw, rh) in [(x, y, w, 1.0), (x, y + BUTTON_H - 1.0, w, 1.0), (x, y, 1.0, BUTTON_H), (x + w - 1.0, y, 1.0, BUTTON_H)] {
+                self.rect(rx, ry, rw, rh, [255, 255, 255], 0.22);
+            }
+        }
+        let color = if on { [235, 235, 235] } else { [150, 150, 150] };
+        self.text(font, x + 10.0, y + 17.0, x + w, label, 15.0, color);
+        w
+    }
+
+    /// Marquage d'une vignette de la grille : étoiles ou rejet à gauche, couleur à droite.
+    fn badges(&mut self, x: f32, y: f32, w: f32, cell: &Cell) {
+        if cell.rejected {
+            let s = 16.0;
+            let (x, y) = (x + 3.0, y + 3.0);
+            self.rect(x, y, s, s, REJECT_ON, 1.0);
+            let (a, b) = (s * 0.28, s * 0.72);
+            self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.0, [255, 255, 255]);
+            self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.0, [255, 255, 255]);
+        } else if cell.rating > 0 {
+            let n = cell.rating as f32;
+            self.rect(x + 3.0, y + 3.0, 4.0 + 12.0 * n, 16.0, [0, 0, 0], 0.55);
+            for k in 0..cell.rating {
+                self.star(x + 5.0 + 12.0 * k as f32, y + 5.0, 12.0, STAR_ON);
+            }
+        }
+        if let Some(c) = cell.color {
+            self.rect(x + w - 17.0, y + 3.0, 14.0, 14.0, [0, 0, 0], 0.55);
+            self.rect(x + w - 15.0, y + 5.0, 10.0, 10.0, c.rgb(), 1.0);
+        }
+    }
+
     fn blit(&mut self, x: usize, y: usize, img: &Thumb) {
         for row in 0..img.height.min(self.height.saturating_sub(y)) {
             let w = img.width.min(self.width.saturating_sub(x));
@@ -290,12 +371,12 @@ pub struct ListImage {
     pub pixels: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    /// (image à afficher au clic, haut, bas) en pixels dans l'image.
-    pub hits: Vec<(usize, f32, f32)>,
-    /// Commandes de la barre de filtre.
-    pub filter_hits: Vec<Hit>,
-    /// Emplacement du repère de position sous la rafale courante : (x, y, largeur).
-    pub track: Option<(f32, f32, f32)>,
+    /// Lignes ou vignettes cliquables (`Widget::Photo`).
+    pub hits: Vec<Hit>,
+    /// Commandes du bas : filtre, vue, aide.
+    pub bar_hits: Vec<Hit>,
+    /// Emplacements possibles du repère de position de l'image courante.
+    pub tracks: Vec<Track>,
 }
 
 impl Panel {
@@ -353,7 +434,14 @@ impl Panel {
         ROW_HEADER + th as f32 + ROW_GAP
     }
 
-    /// Rend la barre de filtre puis les lignes `rows` (déjà choisies pour tenir dans `height`).
+    /// Hauteur d'une rangée de la grille (mode à plat).
+    pub fn grid_row_height(width: u32) -> f32 {
+        let (_, th) = thumb_size(width);
+        th as f32 + THUMB_GAP + 4.0
+    }
+
+    /// Rend les lignes `entries` (déjà choisies pour tenir dans `height`), puis
+    /// la barre de filtre et la ligne de boutons en bas.
     #[allow(clippy::too_many_arguments)]
     pub fn render_list(
         &mut self,
@@ -361,25 +449,24 @@ impl Panel {
         height: u32,
         filter: &Controls,
         filter_text: &str,
-        rows: &[Row],
+        view: View,
+        entries: &[Entry],
         metas: &[Option<Meta>],
         status: &str,
     ) -> ListImage {
         let mut canvas = Canvas::new(width, height.max(1));
-        let mut hits = Vec::with_capacity(rows.len());
-        let mut track = None;
-        // Barre de filtre en bas de la liste.
-        let bar = height as f32 - FILTER_BAR;
-        let mut filter_hits = canvas.controls(PADDING, bar + 10.0, filter);
+        let mut hits = Vec::new();
+        let mut tracks = Vec::new();
+        let bar = height as f32 - BOTTOM_BAR;
+        let mut bar_hits = canvas.controls(PADDING, bar + 10.0, filter);
         let Some(font) = self.font.take() else {
-            return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, filter_hits, track };
+            return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, bar_hits, tracks };
         };
         let (tw, th) = thumb_size(width);
-        let row_h = Self::row_height(width);
         let max_x = width as f32 - PADDING / 2.0;
 
         // À droite des commandes de filtre : nombre de photos et « effacer ».
-        let after = filter_hits.last().map_or(PADDING, |h| h.x + h.w) + 16.0;
+        let after = bar_hits.last().map_or(PADDING, |h| h.x + h.w) + 16.0;
         let active = filter != &Controls::default();
         let color = if active { [215, 215, 215] } else { [120, 120, 120] };
         canvas.text(&font, after, bar + 10.0 + 16.0, max_x, filter_text, 15.0, color);
@@ -388,62 +475,96 @@ impl Panel {
             let w = 56.0;
             let x = width as f32 - PADDING - w;
             canvas.text(&font, x, bar + 10.0 + 16.0, max_x, label, 15.0, [150, 150, 150]);
-            filter_hits.push(Hit { widget: Widget::ClearFilter, x, y: bar, w, h: FILTER_BAR });
+            bar_hits.push(Hit { widget: Widget::ClearFilter, x, y: bar, w, h: FILTER_BAR });
         }
         canvas.rect(PADDING / 2.0, bar + 2.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
-        let mut y = 0.0;
 
+        // Ligne de boutons : vue à gauche, aide à droite.
+        let by = bar + FILTER_BAR + 6.0;
+        if view.flat_available {
+            let mut x = PADDING;
+            for (label, widget, on) in [("Rafales", Widget::Bursts, !view.flat), ("À plat", Widget::Flat, view.flat)] {
+                let w = canvas.button(&font, x, by, label, on);
+                bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
+                x += w + 6.0;
+            }
+        }
+        let mut x = width as f32 - PADDING;
+        for (label, widget) in [("Raccourcis", Widget::Shortcuts), ("Principes", Widget::Principles)] {
+            x -= button_width(&font, label);
+            let w = canvas.button(&font, x, by, label, false);
+            bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
+            x -= 6.0;
+        }
+
+        let mut y = 0.0;
         if !status.is_empty() {
             canvas.text(&font, PADDING, y + 17.0, max_x, status, 15.0, [125, 125, 125]);
             y += ROW_HEADER;
         }
-        for row in rows {
+        for entry in entries {
             let top = y;
-            if row.current {
-                canvas.fill(PADDING / 2.0, top, width as f32 - PADDING, row_h - ROW_GAP / 2.0, HIGHLIGHT);
-            }
-            let clock = metas
-                .get(row.start)
-                .and_then(|m| m.as_ref())
-                .map_or("", |m| m.clock.as_str());
-            let rate = row.rate.map(|r| format!("   {}", format_rate(r))).unwrap_or_default();
-            let count = match row.shown {
-                Some(n) => format!("{n} / {} images", row.len),
-                None => format!("{} images", row.len),
-            };
-            let header = format!("Rafale {}   {clock}   {count}{rate}", row.number);
-            let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
-            canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
-            if row.marked > 0 {
-                // Étoile dessinée : la police n'a pas toujours le caractère ★.
-                let x = width as f32 - PADDING - 40.0;
-                canvas.star(x, top + 5.0, 14.0, MARKED);
-                canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
-            }
-
-            for (k, &index) in row.picks.iter().enumerate() {
-                let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
-                let ty = top + ROW_HEADER;
-                if let Some(t) = self.thumb(index, tw, th, metas) {
-                    // Centrée dans sa case (vignettes portrait plus étroites).
-                    let ox = (tw - t.width as u32) / 2;
-                    let oy = (th - t.height as u32) / 2;
-                    canvas.blit(x as usize + ox as usize, ty as usize + oy as usize, &t);
-                } else {
-                    canvas.fill(x, ty, tw as f32, th as f32, [255, 255, 255, 12]);
+            match entry {
+                Entry::Burst(row) => {
+                    let row_h = Self::row_height(width);
+                    if row.current {
+                        canvas.fill(PADDING / 2.0, top, width as f32 - PADDING, row_h - ROW_GAP / 2.0, HIGHLIGHT);
+                    }
+                    let clock = metas
+                        .get(row.start)
+                        .and_then(|m| m.as_ref())
+                        .map_or("", |m| m.clock.as_str());
+                    let rate = row.rate.map(|r| format!("   {}", format_rate(r))).unwrap_or_default();
+                    let count = match row.shown {
+                        Some(n) => format!("{n} / {} images", row.len),
+                        None => format!("{} images", row.len),
+                    };
+                    let header = format!("Rafale {}   {clock}   {count}{rate}", row.number);
+                    let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
+                    canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
+                    if row.marked > 0 {
+                        // Étoile dessinée : la police n'a pas toujours le caractère ★.
+                        let x = width as f32 - PADDING - 40.0;
+                        canvas.star(x, top + 5.0, 14.0, MARKED);
+                        canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
+                    }
+                    for (k, &index) in row.picks.iter().enumerate() {
+                        let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
+                        self.draw_thumb(&mut canvas, index, x, top + ROW_HEADER, tw, th, metas);
+                    }
+                    // Le repère de position est dessiné à part (quad GPU) : la liste
+                    // n'a pas à être recomposée à chaque image du défilé.
+                    let span = width as f32 - 2.0 * PADDING;
+                    tracks.push(Track { start: row.start, len: row.len, x: PADDING, y: top + ROW_HEADER + th as f32 + 3.0, span });
+                    hits.push(Hit { widget: Widget::Photo(row.first), x: 0.0, y: top, w: width as f32, h: row_h });
+                    y += row_h;
+                }
+                Entry::Photos(cells) => {
+                    for (k, cell) in cells.iter().enumerate() {
+                        let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
+                        self.draw_thumb(&mut canvas, cell.index, x, top, tw, th, metas);
+                        canvas.badges(x, top, tw as f32, cell);
+                        tracks.push(Track { start: cell.index, len: 1, x, y: top + th as f32 + 3.0, span: tw as f32 });
+                        hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
+                    }
+                    y += Self::grid_row_height(width);
                 }
             }
-            // Le repère de position est dessiné à part (quad GPU) : la liste
-            // n'a pas à être recomposée à chaque image du défilé.
-            if row.current {
-                let y = top + ROW_HEADER + th as f32 + 3.0;
-                track = Some((PADDING, y, width as f32 - 2.0 * PADDING));
-            }
-            hits.push((row.first, top, top + row_h));
-            y += row_h;
         }
         self.font = Some(font);
-        ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, filter_hits, track }
+        ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, bar_hits, tracks }
+    }
+
+    /// Vignette centrée dans sa case (vignettes portrait plus étroites), ou case vide.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_thumb(&mut self, canvas: &mut Canvas, index: usize, x: f32, y: f32, tw: u32, th: u32, metas: &[Option<Meta>]) {
+        if let Some(t) = self.thumb(index, tw, th, metas) {
+            let ox = (tw - t.width as u32) / 2;
+            let oy = (th - t.height as u32) / 2;
+            canvas.blit(x as usize + ox as usize, y as usize + oy as usize, &t);
+        } else {
+            canvas.fill(x, y, tw as f32, th as f32, [255, 255, 255, 12]);
+        }
     }
 
     fn thumb(&mut self, index: usize, tw: u32, th: u32, metas: &[Option<Meta>]) -> Option<Arc<Thumb>> {
@@ -478,6 +599,11 @@ pub fn spread(indices: &[usize]) -> Vec<usize> {
     (0..n)
         .map(|k| if n == 1 { indices[0] } else { indices[k * (indices.len() - 1) / (n - 1)] })
         .collect()
+}
+
+fn button_width(font: &Font, label: &str) -> f32 {
+    let text: f32 = label.chars().map(|c| font.metrics(c, 15.0).advance_width).sum();
+    (text + 20.0).round()
 }
 
 fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {

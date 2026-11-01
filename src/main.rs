@@ -1,3 +1,4 @@
+mod help;
 mod loader;
 mod marks;
 mod raw;
@@ -6,7 +7,9 @@ mod panel;
 mod render;
 
 use std::num::NonZeroUsize;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,7 +23,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 use loader::{Decoded, Job, Loader, Quality};
 use marks::{Color, Filter, Mark};
 use meta::Meta;
-use panel::{Controls, Hit, Line, Panel, Row, Widget};
+use panel::{Cell, Controls, Entry, Hit, Line, Panel, Row, Track, View, Widget};
 use render::{Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -30,6 +33,8 @@ const FULL_DELAY: Duration = Duration::from_millis(100);
 /// Préchargement en résolution réduite de part et d'autre de l'image courante.
 const PREFETCH: usize = 10;
 const DEFAULT_FPS: f64 = 25.0;
+/// La vue à plat (une vignette par photo) n'est proposée qu'en dessous de ce nombre de photos.
+const FLAT_MAX: usize = 300;
 
 struct Burst {
     start: usize,
@@ -43,7 +48,7 @@ struct Burst {
 struct Scrollbar {
     track: Rect,
     thumb: Rect,
-    /// Première ligne pour un décalage nul (rafale courante au premier tiers).
+    /// Première ligne pour un décalage nul (ligne courante au premier tiers).
     anchor: isize,
     /// Indice maximal de la première ligne affichée.
     last_first: isize,
@@ -97,16 +102,22 @@ struct App {
     bursts: Vec<Burst>,
     /// Rafale de chaque fichier déjà analysé.
     burst_of: Vec<usize>,
-    /// Décalage de la liste à la molette (en lignes), remis à zéro au changement de rafale.
+    /// Vue à plat : une vignette par photo au lieu d'une ligne par rafale.
+    flat: bool,
+    /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
+    help: Option<Child>,
+    /// Décalage de la liste à la molette (en lignes), remis à zéro au changement
+    /// de ligne courante (rafale, ou rangée en vue à plat).
     list_offset: isize,
-    list_burst: Option<usize>,
+    list_group: Option<(bool, usize)>,
     list_key: String,
-    /// Zones cliquables de la liste : (image à afficher, haut, bas), relatives à la liste.
-    list_hits: Vec<(usize, f32, f32)>,
-    /// Commandes cliquables : marquage (relatives au panneau) et filtre (relatives à la liste).
+    list_row_h: f32,
+    /// Zones cliquables : marquage (relatives au panneau), lignes ou vignettes de
+    /// la liste et commandes du bas (relatives à la liste).
     info_hits: Vec<Hit>,
-    filter_hits: Vec<Hit>,
-    list_track: Option<(f32, f32, f32)>,
+    list_hits: Vec<Hit>,
+    bar_hits: Vec<Hit>,
+    tracks: Vec<Track>,
     scrollbar: Option<Scrollbar>,
     /// Glissement de l'ascenseur en cours : décalage du pointeur dans le curseur.
     dragging: Option<f32>,
@@ -169,13 +180,16 @@ impl App {
             scanned: 0,
             bursts: Vec::new(),
             burst_of: Vec::new(),
+            flat: false,
+            help: None,
             list_offset: 0,
-            list_burst: None,
+            list_group: None,
             list_key: String::new(),
-            list_hits: Vec::new(),
+            list_row_h: 1.0,
             info_hits: Vec::new(),
-            filter_hits: Vec::new(),
-            list_track: None,
+            list_hits: Vec::new(),
+            bar_hits: Vec::new(),
+            tracks: Vec::new(),
             scrollbar: None,
             dragging: None,
             window: None,
@@ -268,8 +282,8 @@ impl App {
                 self.backward_held = pressed;
                 self.direction_key(-1, pressed, now);
             }
-            KeyCode::ArrowUp if pressed => self.burst_step(-1, now),
-            KeyCode::ArrowDown if pressed => self.burst_step(1, now),
+            KeyCode::ArrowUp if pressed => self.vertical_step(-1, now),
+            KeyCode::ArrowDown if pressed => self.vertical_step(1, now),
             KeyCode::Home if pressed => {
                 if let Some(i) = self.first_visible_in(0, self.files.len()) {
                     self.jump(i, now);
@@ -326,6 +340,54 @@ impl App {
             };
             self.next_step_at = now + self.step_interval;
         }
+    }
+
+    /// ↑ / ↓ : rangée de la grille en vue à plat, rafale sinon.
+    fn vertical_step(&mut self, dir: isize, now: Instant) {
+        if self.flat_view() {
+            let per = panel::THUMBS_PER_ROW;
+            if let Some(i) = (1..=per).rev().find_map(|k| self.neighbor(self.cur, dir, k)) {
+                self.jump(i, now);
+            }
+        } else {
+            self.burst_step(dir, now);
+        }
+    }
+
+    fn flat_view(&self) -> bool {
+        self.flat && self.files.len() < FLAT_MAX
+    }
+
+    /// Ouvre une fenêtre d'aide à texte sélectionnable (zenity).
+    fn show_help(&mut self, title: &str, text: &str) {
+        if self.help_open() {
+            return;
+        }
+        let child = Command::new("zenity")
+            .args(["--text-info", "--title", title, "--width=780", "--height=760"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match child {
+            Ok(mut c) => {
+                // Le texte tient dans le tampon du tube ; fermer l'entrée marque la fin.
+                if let Some(mut stdin) = c.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                self.help = Some(c);
+            }
+            Err(e) => log::warn!("zenity : {e}"),
+        }
+    }
+
+    /// Fenêtre d'aide encore ouverte ?
+    fn help_open(&mut self) -> bool {
+        let open = self.help.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        if !open {
+            self.help = None;
+        }
+        open
     }
 
     /// Début de la rafale précédente ou suivante (qui a des images visibles).
@@ -461,12 +523,12 @@ impl App {
                 m.rejected = !m.rejected;
                 m.rating = 0;
             }),
-            Widget::ClearFilter => {}
+            _ => {}
         }
     }
 
-    /// Clic sur une commande de filtre (en haut de la liste).
-    fn filter_widget(&mut self, widget: Widget) {
+    /// Clic sur une commande du bas de la liste : filtre, vue ou aide.
+    fn bar_widget(&mut self, widget: Widget) {
         let mut f = self.filter;
         match widget {
             Widget::Star(n) => f.min_rating = if f.min_rating == n { 0 } else { n },
@@ -474,6 +536,14 @@ impl App {
             Widget::Check => f.retained = !f.retained,
             Widget::Reject => f.rejected = !f.rejected,
             Widget::ClearFilter => f = Filter::default(),
+            Widget::Bursts | Widget::Flat => {
+                self.flat = widget == Widget::Flat;
+                self.list_offset = 0;
+                return;
+            }
+            Widget::Principles => return self.show_help(help::PRINCIPLES_TITLE, help::PRINCIPLES),
+            Widget::Shortcuts => return self.show_help(help::SHORTCUTS_TITLE, help::SHORTCUTS),
+            Widget::Photo(_) => return,
         }
         self.set_filter(f);
     }
@@ -648,7 +718,8 @@ impl App {
         }
     }
 
-    /// Liste des rafales autour de la rafale courante ; recomposée seulement si elle change.
+    /// Liste autour de la ligne courante (rafales, ou rangées de photos en vue à
+    /// plat) ; recomposée seulement si elle change.
     fn update_list(&mut self) {
         let Some(renderer) = &mut self.renderer else {
             return;
@@ -662,56 +733,91 @@ impl App {
         } else {
             String::new()
         };
-        // Ligne d'état en haut (pendant l'analyse), barre de filtre en bas.
+        // Ligne d'état en haut (pendant l'analyse), filtre et boutons en bas.
         let status_h = if status.is_empty() { 0.0 } else { panel::PADDING };
-        let header = panel::FILTER_BAR + status_h;
-        let fit = ((height as f32 - header) / Panel::row_height(width)).max(0.0) as isize;
-
-        // Rafales listées : celles qui ont au moins une image visible.
+        let header = panel::BOTTOM_BAR + status_h;
+        let flat = self.flat && self.files.len() < FLAT_MAX;
+        let row_h = if flat { Panel::grid_row_height(width) } else { Panel::row_height(width) };
+        self.list_row_h = row_h;
+        let fit = ((height as f32 - header) / row_h).max(0.0) as isize;
         let filtering = self.filter.active();
-        let listed: Vec<usize> = (0..self.bursts.len())
-            .filter(|&i| !filtering || !visible_in(&self.visible, self.bursts[i].start, self.bursts[i].len).is_empty())
-            .collect();
+        let per = panel::THUMBS_PER_ROW;
+
+        // Vue à plat : les photos visibles, par rangées. Sinon : les rafales qui
+        // ont au moins une image visible.
+        let photos: Vec<usize> = if !flat {
+            Vec::new()
+        } else if filtering {
+            self.visible.clone()
+        } else {
+            (0..self.files.len()).collect()
+        };
+        let listed: Vec<usize> = if flat {
+            Vec::new()
+        } else {
+            (0..self.bursts.len())
+                .filter(|&i| !filtering || !visible_in(&self.visible, self.bursts[i].start, self.bursts[i].len).is_empty())
+                .collect()
+        };
         let cur_burst = self.burst_of.get(self.cur).copied();
-        if cur_burst != self.list_burst {
-            self.list_burst = cur_burst;
+        let (total, cur_pos) = if flat {
+            (photos.len().div_ceil(per), photos.partition_point(|&i| i < self.cur) / per)
+        } else {
+            (listed.len(), cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)))
+        };
+        let group = Some((flat, cur_pos));
+        if group != self.list_group {
+            self.list_group = group;
             self.list_offset = 0;
         }
-        // Rafale courante au premier tiers, décalable à la molette.
-        let cur_pos = cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)) as isize;
-        let anchor = cur_pos - fit / 3;
-        let last_first = (listed.len() as isize - fit).max(0);
+        // Ligne courante au premier tiers, décalable à la molette.
+        let anchor = cur_pos as isize - fit / 3;
+        let last_first = (total as isize - fit).max(0);
         let first = (anchor + self.list_offset).clamp(0, last_first);
         self.list_offset = first - anchor;
-        let rows: Vec<Row> = listed
-            .iter()
-            .skip(first as usize)
-            .take(fit as usize)
-            .map(|&i| {
-                let b = &self.bursts[i];
-                let all: Vec<usize>;
-                let indices: &[usize] = if filtering {
-                    visible_in(&self.visible, b.start, b.len)
-                } else {
-                    all = (b.start..b.start + b.len).collect();
-                    &all
-                };
-                Row {
-                    start: b.start,
-                    len: b.len,
-                    shown: filtering.then_some(indices.len()),
-                    picks: panel::spread(indices),
-                    first: indices[0],
-                    number: i + 1,
-                    rate: b.rate,
-                    marked: self.marks[b.start..b.start + b.len]
+        let lines = first as usize..(first + fit).min(total as isize).max(first) as usize;
+        let entries: Vec<Entry> = if flat {
+            lines
+                .map(|r| {
+                    let cells = photos[r * per..((r + 1) * per).min(photos.len())]
                         .iter()
-                        .filter(|m| m.retained())
-                        .count(),
-                    current: Some(i) == cur_burst,
-                }
-            })
-            .collect();
+                        .map(|&index| {
+                            let m = &self.marks[index];
+                            Cell { index, rating: m.rating, rejected: m.rejected, color: m.color }
+                        })
+                        .collect();
+                    Entry::Photos(cells)
+                })
+                .collect()
+        } else {
+            listed[lines]
+                .iter()
+                .map(|&i| {
+                    let b = &self.bursts[i];
+                    let all: Vec<usize>;
+                    let indices: &[usize] = if filtering {
+                        visible_in(&self.visible, b.start, b.len)
+                    } else {
+                        all = (b.start..b.start + b.len).collect();
+                        &all
+                    };
+                    Entry::Burst(Row {
+                        start: b.start,
+                        len: b.len,
+                        shown: filtering.then_some(indices.len()),
+                        picks: panel::spread(indices),
+                        first: indices[0],
+                        number: i + 1,
+                        rate: b.rate,
+                        marked: self.marks[b.start..b.start + b.len]
+                            .iter()
+                            .filter(|m| m.retained())
+                            .count(),
+                        current: Some(i) == cur_burst,
+                    })
+                })
+                .collect()
+        };
 
         let f = self.filter;
         let filter_controls = Controls {
@@ -725,43 +831,45 @@ impl App {
         } else {
             "Filtre : toutes les photos".to_string()
         };
-        let key = format!("{width}x{height} {status} {filter_controls:?} {filter_text} {rows:?}");
+        let view = View { flat_available: self.files.len() < FLAT_MAX, flat };
+        let key = format!("{width}x{height} {status} {filter_controls:?} {filter_text} {view:?} {entries:?}");
         if key != self.list_key {
             let list = self.panel.render_list(
                 width,
                 height,
                 &filter_controls,
                 &filter_text,
-                &rows,
+                view,
+                &entries,
                 &self.metas,
                 &status,
             );
             renderer.set_list(&list.pixels, list.width, list.height);
             self.list_hits = list.hits;
-            self.filter_hits = list.filter_hits;
-            self.list_track = list.track;
+            self.bar_hits = list.bar_hits;
+            self.tracks = list.tracks;
             self.list_key = key;
             if let Some(w) = &self.window {
                 w.request_redraw();
             }
         }
 
-        // Repère de position de l'image courante dans sa rafale.
-        let marker = self.list_track.zip(cur_burst).map(|((x, y, span), b)| {
-            let burst = &self.bursts[b];
-            let step = span / burst.len as f32;
+        // Repère de position de l'image courante : dans sa rafale, ou sous sa vignette.
+        let cur = self.cur;
+        let marker = self.tracks.iter().find(|t| (t.start..t.start + t.len).contains(&cur)).map(|t| {
+            let step = t.span / t.len as f32;
             Rect {
-                x: lx + x + step * (self.cur - burst.start) as f32,
-                y: ly + y,
+                x: lx + t.x + step * (cur - t.start) as f32,
+                y: ly + t.y,
                 w: step.max(3.0),
                 h: 3.0,
             }
         });
-        // Ascenseur, seulement si toutes les rafales ne tiennent pas.
-        let total = listed.len() as f32;
-        self.scrollbar = (fit > 0 && listed.len() > fit as usize).then(|| {
+        // Ascenseur, seulement si toutes les lignes ne tiennent pas.
+        let total = total as f32;
+        self.scrollbar = (fit > 0 && total > fit as f32).then(|| {
             let top = ly + status_h;
-            let h = fit as f32 * Panel::row_height(width);
+            let h = fit as f32 * row_h;
             let x = lx + width as f32 - panel::PADDING / 2.0 + 2.0;
             let thumb_h = (h * fit as f32 / total).max(24.0);
             let thumb_y = top + (h - thumb_h) * first as f32 / (total - fit as f32);
@@ -810,7 +918,7 @@ impl App {
         self.list_offset = first - s.anchor;
     }
 
-    /// Clic dans le panneau : commandes de marquage, de filtre, ou ligne de rafale.
+    /// Clic dans le panneau : commandes de marquage, commandes du bas, ou ligne / vignette.
     fn click(&mut self) {
         let (Some((cx, cy)), Some(renderer)) = (self.cursor, &self.renderer) else {
             return;
@@ -823,11 +931,11 @@ impl App {
             return self.mark_widget(h.widget);
         }
         let local = (cx - lx, cy - ly);
-        if let Some(h) = self.filter_hits.iter().find(|h| h.contains(local)) {
-            return self.filter_widget(h.widget);
+        if let Some(h) = self.bar_hits.iter().find(|h| h.contains(local)) {
+            return self.bar_widget(h.widget);
         }
-        if let Some(&(first, _, _)) = self.list_hits.iter().find(|(_, top, bottom)| (*top..*bottom).contains(&local.1)) {
-            self.jump(first, Instant::now());
+        if let Some(Widget::Photo(i)) = self.list_hits.iter().find(|h| h.contains(local)).map(|h| h.widget) {
+            self.jump(i, Instant::now());
         }
     }
 
@@ -840,9 +948,7 @@ impl App {
         }
         let rows = match delta {
             MouseScrollDelta::LineDelta(_, y) => -y.signum() as isize,
-            MouseScrollDelta::PixelDelta(p) => {
-                -(p.y as f32 / Panel::row_height(renderer.panel_width())).round() as isize
-            }
+            MouseScrollDelta::PixelDelta(p) => -(p.y as f32 / self.list_row_h).round() as isize,
         };
         self.list_offset += rows;
     }
@@ -999,6 +1105,9 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+            // Fenêtre d'aide ouverte : elle est modale.
+            WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. } | WindowEvent::KeyboardInput { .. }
+                if self.help_open() => {}
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,

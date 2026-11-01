@@ -49,6 +49,7 @@ rafale-viewer ~/Images/2026-10-29
 │                                      │ ━━━ (position)       │
 │                                      ├──────────────────────┤
 │                                      │ ★★☆☆☆ ■■■■■ [ ] [ ] │ ← filtre
+│                                      │ [Rafales][À plat]  … │ ← vue, aide
 └──────────────────────────────────────┴──────────────────────┘
 ```
 
@@ -61,7 +62,11 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait blanc sous ses vignettes montre où tu en es.
 
-**En bas, la barre de filtre** (voir « Souris »).
+**En bas, la barre de filtre** (voir « Souris »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
+
+**Vue À plat.** Pour un dossier de moins de 300 photos, le bouton « À plat » remplace la liste des rafales par une grille : une vignette par photo, avec son marquage (étoiles ou croix de rejet en haut à gauche, couleur en haut à droite). Un trait blanc souligne la photo affichée. Un clic sur une vignette affiche la photo. Le filtre et le marquage fonctionnent comme en vue Rafales. ↑ et ↓ montent ou descendent d'une rangée.
+
+**Principes et Raccourcis** ouvrent une fenêtre d'aide dont on peut sélectionner et copier le texte. Tant qu'elle est ouverte, la fenêtre de Rafale ne réagit plus ; ferme l'aide pour reprendre.
 
 ## Clavier
 
@@ -69,8 +74,8 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 |---|---|
 | → ou Page Suiv. | Photo suivante. Maintenue : défilé continu. |
 | ← ou Page Préc. | Photo précédente. Maintenue : défilé continu en arrière. |
-| ↓ | Début de la rafale suivante |
-| ↑ | Début de la rafale précédente |
+| ↓ | Début de la rafale suivante (vue À plat : rangée suivante) |
+| ↑ | Début de la rafale précédente (vue À plat : rangée précédente) |
 | Début / Fin | Première / dernière photo |
 | Espace | Retenue (1 ★) ↔ non retenue |
 | 1 à 5 | Nombre d'étoiles (rangée du haut, sans Maj, ou pavé numérique) |
@@ -89,7 +94,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 - **Loupe 100 %.** À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
 - **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X.
 - **Barre de filtre en bas de la liste** (mêmes commandes) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. « effacer » supprime le filtre. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
-- **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre).
+- **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre). En vue À plat, un clic sur une vignette affiche cette photo.
 - **Molette au-dessus du panneau :** fait défiler la liste. Elle se recentre dès que tu changes de rafale.
 - **Ascenseur à droite de la liste :** tu peux le faire glisser. Un clic sur la piste y amène directement le curseur.
 
