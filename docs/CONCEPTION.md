@@ -124,7 +124,7 @@ orientation : u32  EXIF 1 à 8
 
 `Renderer::loupe_rects` : carré de 600 px centré sur le pointeur, avec un rectangle source de la même taille en pixels pleine résolution. Les deux origines sont **arrondies au pixel** et le sampler est en `Nearest` : chaque pixel de l'écran tombe exactement sur un pixel source, sans aucun flou d'interpolation. La source est ramenée à l'intérieur de l'image près des bords. Conditions d'affichage (`loupe_allowed`) : arrêt, pleine résolution affichée, pointeur sur l'image.
 
-**Loupe figée** (`App::pin`) : un clic sur la photo retient le point en **proportions de la photo** (0..1, `Renderer::image_point`), pas en pixels écran. À chaque dessin, `screen_point` le reconvertit : la loupe reste sur la même zone d'une vue à l'autre, même si le cadrage à l'écran change (photo portrait). Elle s'affiche aux mêmes conditions (arrêt, pleine résolution), donc ne coûte rien au défilé. Bordure bleue (quad `border_pinned`), pointeur laissé visible, pas de redessin aux mouvements du pointeur. Clic droit : libérée.
+**Loupe figée** (`App::pin`) : un clic sur la photo retient le point en **proportions de la photo** (0..1, `Renderer::image_point`), pas en pixels écran. À chaque dessin, `screen_point` le reconvertit : la loupe reste sur la même zone d'une vue à l'autre, même si le cadrage à l'écran change (photo portrait). Elle s'affiche aux mêmes conditions (arrêt, pleine résolution), donc ne coûte rien au défilé. Bordure bleue (quad `border_pinned`), pointeur laissé visible, pas de redessin aux mouvements du pointeur. Clic droit : libérée ; libérée aussi au changement de rafale (`pin_burst`), le cadrage n'ayant plus rien à voir.
 
 ### 5.4 Pièges Wayland rencontrés
 

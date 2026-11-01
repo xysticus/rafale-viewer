@@ -99,6 +99,8 @@ struct App {
     /// Loupe figée : point de la photo (proportions 0..1) où elle reste d'une vue
     /// à l'autre, au lieu de suivre le pointeur.
     pin: Option<(f32, f32)>,
+    /// Rafale où la loupe a été figée : elle est libérée quand on en sort.
+    pin_burst: Option<usize>,
 
     /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
     scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
@@ -188,6 +190,7 @@ impl App {
             loupe_allowed: false,
             cursor_hidden: false,
             pin: None,
+            pin_burst: None,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -1026,6 +1029,7 @@ impl App {
             // Clic sur la photo : la loupe se fige à cet endroit (ou s'y déplace).
             if let Some(uv) = renderer.image_point((cx, cy)) {
                 self.pin = Some(uv);
+                self.pin_burst = self.burst_of.get(self.cur).copied();
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
@@ -1098,6 +1102,13 @@ impl App {
 
         let now = Instant::now();
         self.step(now);
+        // Autre rafale, autre cadrage : la loupe figée est libérée.
+        if self.pin.is_some() && self.burst_of.get(self.cur).copied() != self.pin_burst {
+            self.pin = None;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
         let jobs = self.wanted(now);
         self.loader.as_ref().unwrap().set_wanted(jobs);
 
