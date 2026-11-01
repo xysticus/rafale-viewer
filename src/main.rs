@@ -292,6 +292,9 @@ impl App {
             let ctrl = self.modifiers.state().control_key();
             match c.to_lowercase().as_str() {
                 "c" if pressed && ctrl => return self.copy_selection(),
+                // Fonction cachée : seulement les XMP de la sélection, pour donner
+                // les marquages à un logiciel qu'on essaie sur une copie des photos.
+                "x" if pressed && ctrl => return self.copy_xmp(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 "n" if pressed => return self.jump_sharpest(),
@@ -344,10 +347,7 @@ impl App {
                     self.jump(i, now);
                 }
             }
-            KeyCode::Space if pressed => self.edit_mark(|m| {
-                m.rating = if m.retained() { 0 } else { 1 };
-                m.rejected = false;
-            }),
+            KeyCode::Space if pressed => self.edit_mark(Mark::toggle_retained),
             KeyCode::Digit0 | KeyCode::Numpad0 if pressed => self.set_rating(0),
             KeyCode::Digit1 | KeyCode::Numpad1 if pressed => self.set_rating(1),
             KeyCode::Digit2 | KeyCode::Numpad2 if pressed => self.set_rating(2),
@@ -447,6 +447,33 @@ impl App {
             }
         };
         log::info!("copie de la sélection : {}", self.copy_message);
+    }
+
+    /// Ctrl+X : met dans le presse-papiers les XMP de la sélection (ceux des JPEG,
+    /// des RAW ou les deux, selon le choix de copie), comme une copie dans Fichiers.
+    fn copy_xmp(&mut self) {
+        let mut paths = Vec::new();
+        for i in self.selection() {
+            if self.copy_kind != CopyKind::Raw {
+                paths.push(marks::sidecar(&self.files[i]));
+            }
+            if self.copy_kind != CopyKind::Jpeg {
+                paths.extend(self.raws[i].as_deref().map(marks::sidecar));
+            }
+        }
+        paths.retain(|p| p.is_file());
+        self.copy_message = if paths.is_empty() {
+            "aucun XMP à copier".into()
+        } else {
+            match clipboard_files(&paths) {
+                Ok(()) => format!("{} XMP copiés : Ctrl+V dans Fichiers", paths.len()),
+                Err(e) => {
+                    log::error!("presse-papiers : {e}");
+                    format!("échec : {e}")
+                }
+            }
+        };
+        log::info!("copie des XMP : {}", self.copy_message);
     }
 
     /// Ouvre une fenêtre d'aide à texte sélectionnable (zenity).
@@ -620,10 +647,7 @@ impl App {
                 self.set_rating(n);
             }
             Widget::Color(c) => self.toggle_color(c),
-            Widget::Check => self.edit_mark(|m| {
-                m.rating = if m.retained() { 0 } else { 1 };
-                m.rejected = false;
-            }),
+            Widget::Check => self.edit_mark(Mark::toggle_retained),
             Widget::Reject => self.edit_mark(|m| {
                 m.rejected = !m.rejected;
                 m.rating = 0;

@@ -96,7 +96,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | ↓ | Début de la rafale suivante (vue À plat : rangée suivante) |
 | ↑ | Début de la rafale précédente (vue À plat : rangée précédente) |
 | Début / Fin | Première / dernière photo |
-| Espace | Retenue (1 ★) ↔ non retenue |
+| Espace | Retenue (2 ★) ↔ non retenue (0 ★) |
 | 1 à 5 | Nombre d'étoiles (rangée du haut, sans Maj, ou pavé numérique) |
 | 0 | Efface les étoiles |
 | X ou R | Rejetée ↔ non rejetée |
@@ -129,7 +129,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 Le marquage est enregistré dans un petit fichier à côté de chaque photo marquée : `PA290123.JPG.xmp`. Les JPEG ne sont jamais modifiés. Si tu enlèves tout le marquage d'une photo (aucune étoile, aucune couleur, pas de rejet), son fichier `.xmp` est supprimé.
 
-**Retenue** veut dire au moins une étoile et pas rejetée. Espace pose une étoile ; les touches 1 à 5 règlent la note précisément.
+**Retenue** veut dire au moins **deux** étoiles et pas rejetée. Une étoile sert de « peut-être » : la photo n'est pas retenue, mais tu peux la retrouver avec le filtre ★ 1. Espace pose deux étoiles, ou les enlève si la photo était retenue ; les touches 1 à 5 règlent la note précisément. Le filtre ✓, la copie sans filtre, le compte « ★ n » des rafales et la case ✓ du panneau suivent cette règle.
 
 ### Les RAW
 
@@ -159,7 +159,9 @@ Pour donner à un logiciel de retouche un dossier qui ne contient que les photos
 2. **Ctrl+C**, ou clic sur **« Copier … »**. La sélection, ce sont les photos qui passent le filtre si un filtre est actif, sinon les photos retenues. Le bouton indique combien il y en a.
 3. Dans **Fichiers**, ouvre le dossier de destination et fais **Ctrl+V** : les fichiers y sont copiés.
 
-Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copiés, 2 sans RAW ». Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
+Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copiés, 2 sans RAW ».
+
+**Ctrl+X : les XMP seuls** (fonction cachée, sans bouton). Même sélection et même choix JPEG / RAW / Les deux que Ctrl+C, mais seuls les fichiers `.xmp` existants sont mis dans le presse-papiers, en copie (rien n'est déplacé). Usage : essayer un logiciel qui écrit ses propres `.xmp` sans salir le dossier trié dans Rafale. On copie les photos (Ctrl+C) dans un dossier d'essai, puis leurs `.xmp` (Ctrl+X), et le logiciel essayé y retrouve les marquages. Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
 
 ## Rafales et réglages de l'appareil
 
