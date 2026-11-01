@@ -151,6 +151,8 @@ pub struct Track {
     pub x: f32,
     pub y: f32,
     pub span: f32,
+    /// Vignette de la grille (x, y, largeur, hauteur) : encadrée au lieu d'être soulignée.
+    pub cell: Option<(f32, f32, f32, f32)>,
 }
 
 /// Image RGBA (alpha = couverture) en cours de composition.
@@ -455,7 +457,7 @@ impl Panel {
     /// Hauteur d'une rangée de la grille (mode à plat).
     pub fn grid_row_height(width: u32) -> f32 {
         let (_, th) = thumb_size(width);
-        th as f32 + THUMB_GAP + 4.0
+        th as f32 + THUMB_GAP + 8.0
     }
 
     /// Rend les lignes `entries` (déjà choisies pour tenir dans `height`), puis
@@ -566,16 +568,19 @@ impl Panel {
                     // Le repère de position est dessiné à part (quad GPU) : la liste
                     // n'a pas à être recomposée à chaque image du défilé.
                     let span = width as f32 - 2.0 * PADDING;
-                    tracks.push(Track { start: row.start, len: row.len, x: PADDING, y: top + ROW_HEADER + th as f32 + 3.0, span });
+                    tracks.push(Track { start: row.start, len: row.len, x: PADDING, y: top + ROW_HEADER + th as f32 + 3.0, span, cell: None });
                     hits.push(Hit { widget: Widget::Photo(row.first), x: 0.0, y: top, w: width as f32, h: row_h });
                     y += row_h;
                 }
                 Entry::Photos(cells) => {
                     for (k, cell) in cells.iter().enumerate() {
                         let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
+                        // Marge pour le cadre de la vignette active.
+                        let top = top + 4.0;
                         self.draw_thumb(&mut canvas, cell.index, x, top, tw, th, metas);
                         canvas.badges(x, top, tw as f32, cell);
-                        tracks.push(Track { start: cell.index, len: 1, x, y: top + th as f32 + 3.0, span: tw as f32 });
+                        let cell_box = Some((x, top, tw as f32, th as f32));
+                        tracks.push(Track { start: cell.index, len: 1, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
                         hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
                     }
                     y += Self::grid_row_height(width);

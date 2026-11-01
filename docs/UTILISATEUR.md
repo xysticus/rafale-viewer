@@ -67,7 +67,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **Vue au lancement :** À plat, sauf si Rafale détecte une rafale de plus de 5 photos ; dans ce cas, vue Rafales. Les boutons permettent toujours de changer.
 
-**Vue À plat.** Pour un dossier de moins de 300 photos, le bouton « À plat » remplace la liste des rafales par une grille : une vignette par photo, avec son marquage (étoiles ou croix de rejet en haut à gauche, couleur en haut à droite). Un trait blanc souligne la photo affichée. Un clic sur une vignette affiche la photo. Le filtre et le marquage fonctionnent comme en vue Rafales. ↑ et ↓ montent ou descendent d'une rangée.
+**Vue À plat.** Pour un dossier de moins de 300 photos, le bouton « À plat » remplace la liste des rafales par une grille : une vignette par photo, avec son marquage (étoiles ou croix de rejet en haut à gauche, couleur en haut à droite). Un cadre bleu entoure la photo affichée. Un clic sur une vignette affiche la photo. Le filtre et le marquage fonctionnent comme en vue Rafales. ↑ et ↓ montent ou descendent d'une rangée.
 
 **Principes et Raccourcis** ouvrent une fenêtre d'aide dont on peut sélectionner et copier le texte. Tant qu'elle est ouverte, la fenêtre de Rafale ne réagit plus ; ferme l'aide pour reprendre.
 
