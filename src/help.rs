@@ -42,6 +42,15 @@ FILTRER
 les flèches, Début, Fin et la liste ne montrent alors que les photos qui passent \
 le filtre.
 
+COPIER LA SÉLECTION
+
+• Ctrl+C, ou le bouton « Copier … », met la sélection dans le presse-papiers : \
+les photos filtrées si un filtre est actif, sinon les photos retenues. Un Ctrl+V \
+dans un dossier ouvert dans Fichiers y copie les fichiers.
+• Le choix JPEG / RAW / Les deux décide des fichiers copiés. On peut ainsi donner \
+à n'importe quel logiciel de retouche un dossier qui ne contient que les photos \
+choisies, sans dépendre de sa façon de lire notes et étiquettes.
+
 MÉTHODE CONSEILLÉE
 
 1. Défile chaque rafale touche maintenue, relâche sur les moments forts, vérifie \
@@ -68,6 +77,10 @@ Espace : retenue (1 ★) ↔ non retenue
 X ou R : rejetée ↔ non rejetée
 F1 à F5 : étiquette rouge, jaune, verte, bleue, violette (un deuxième appui l'enlève)
 
+COPIE
+
+Ctrl+C : copie la sélection (filtrées, sinon retenues) ; Ctrl+V dans Fichiers
+
 FENÊTRE
 
 F ou F11 : plein écran
@@ -81,5 +94,6 @@ Pointeur sur la photo, à l'arrêt : loupe 100 %
 Mêmes commandes en bas : filtre ; « effacer » supprime le filtre
 Clic sur une rafale ou une vignette : y aller
 Molette sur le panneau, ou ascenseur : faire défiler la liste
+JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
 Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
 ";

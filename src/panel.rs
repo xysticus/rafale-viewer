@@ -29,7 +29,8 @@ const REJECT_ON: [u8; 3] = [205, 70, 60];
 /// Hauteur de la barre de filtre, puis de la ligne de boutons (vue, aide), en bas de la liste.
 const FILTER_BAR: f32 = CTRL + 16.0;
 const BUTTON_H: f32 = 24.0;
-pub const BOTTOM_BAR: f32 = FILTER_BAR + BUTTON_H + 14.0;
+const BUTTON_LINE: f32 = BUTTON_H + 8.0;
+pub const BOTTOM_BAR: f32 = FILTER_BAR + 2.0 * BUTTON_LINE + 6.0;
 
 /// Élément cliquable du panneau.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,6 +48,18 @@ pub enum Widget {
     /// Fenêtres d'aide.
     Principles,
     Shortcuts,
+    /// Fichiers à copier, et copie de la sélection dans le presse-papiers.
+    CopyKind(CopyKind),
+    Copy,
+}
+
+/// Fichiers copiés pour chaque photo de la sélection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CopyKind {
+    #[default]
+    Jpeg,
+    Raw,
+    Both,
 }
 
 /// État affiché par une rangée de commandes.
@@ -118,11 +131,16 @@ pub enum Entry {
     Photos(Vec<Cell>),
 }
 
-/// Boutons de vue : le mode à plat n'est proposé que pour les petits dossiers.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// État des boutons du bas : copie, puis vue (le mode à plat n'est proposé
+/// que pour les petits dossiers).
+#[derive(Debug, Clone, PartialEq)]
 pub struct View {
     pub flat_available: bool,
     pub flat: bool,
+    pub copy_kind: CopyKind,
+    /// Libellé du bouton de copie, et compte rendu de la dernière copie.
+    pub copy_label: String,
+    pub copy_message: String,
 }
 
 /// Emplacement du repère de position sous les photos `start..start + len` : (x, y, largeur).
@@ -449,7 +467,7 @@ impl Panel {
         height: u32,
         filter: &Controls,
         filter_text: &str,
-        view: View,
+        view: &View,
         entries: &[Entry],
         metas: &[Option<Meta>],
         status: &str,
@@ -479,8 +497,21 @@ impl Panel {
         }
         canvas.rect(PADDING / 2.0, bar + 2.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
 
+        // Ligne de copie : JPEG / RAW / les deux, bouton de copie, compte rendu.
+        let by = bar + FILTER_BAR + 4.0;
+        let mut x = PADDING;
+        for (label, kind) in [("JPEG", CopyKind::Jpeg), ("RAW", CopyKind::Raw), ("Les deux", CopyKind::Both)] {
+            let w = canvas.button(&font, x, by, label, view.copy_kind == kind);
+            bar_hits.push(Hit { widget: Widget::CopyKind(kind), x, y: by, w, h: BUTTON_H });
+            x += w;
+        }
+        x += 12.0;
+        let w = canvas.button(&font, x, by, &view.copy_label, false);
+        bar_hits.push(Hit { widget: Widget::Copy, x, y: by, w, h: BUTTON_H });
+        canvas.text(&font, x + w + 12.0, by + 17.0, max_x, &view.copy_message, 15.0, [150, 150, 150]);
+
         // Ligne de boutons : vue à gauche, aide à droite.
-        let by = bar + FILTER_BAR + 6.0;
+        let by = by + BUTTON_LINE;
         if view.flat_available {
             let mut x = PADDING;
             for (label, widget, on) in [("Rafales", Widget::Bursts, !view.flat), ("À plat", Widget::Flat, view.flat)] {
