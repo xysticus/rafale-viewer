@@ -31,6 +31,33 @@ pub struct Meta {
     /// Vignette EXIF, encore compressée en JPEG.
     pub thumb: Option<Vec<u8>>,
     pub orientation: u8,
+    /// Zone de mise au point (OM System / Olympus) : x, y, largeur, hauteur en
+    /// proportions de l'image du capteur, avant orientation.
+    pub af: Option<[f32; 4]>,
+}
+
+impl Meta {
+    /// Zone AF en proportions de la photo telle qu'affichée (orientation appliquée).
+    pub fn af_display(&self) -> Option<[f32; 4]> {
+        self.af.map(|r| orient_rect(r, self.orientation))
+    }
+}
+
+/// Rectangle en proportions du capteur → proportions de l'image orientée
+/// (même correspondance que le shader et `panel::orient`).
+fn orient_rect([x, y, w, h]: [f32; 4], orientation: u8) -> [f32; 4] {
+    let map = |u: f32, v: f32| match orientation {
+        2 => (1.0 - u, v),
+        3 => (1.0 - u, 1.0 - v),
+        4 => (u, 1.0 - v),
+        5 => (v, u),
+        6 => (1.0 - v, u),
+        7 => (1.0 - v, 1.0 - u),
+        8 => (v, 1.0 - u),
+        _ => (u, v),
+    };
+    let (a, b) = (map(x, y), map(x + w, y + h));
+    [a.0.min(b.0), a.1.min(b.1), (a.0 - b.0).abs(), (a.1 - b.1).abs()]
 }
 
 /// `next` prolonge-t-elle la rafale de `prev` ?
@@ -59,6 +86,7 @@ pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, proxy: EventLo
                         noise_filter: None,
                         thumb: None,
                         orientation: 1,
+                        af: None,
                     }
                 });
                 if tx.send((i, meta)).is_err() {
@@ -131,6 +159,7 @@ fn read_meta(path: &std::path::Path) -> Option<Meta> {
         noise_filter: olympus.noise_filter,
         thumb,
         orientation,
+        af: olympus.af,
     })
 }
 
@@ -177,6 +206,7 @@ struct Olympus {
     drive: Option<(u16, u16)>,
     picture_mode: Option<String>,
     noise_filter: Option<&'static str>,
+    af: Option<[f32; 4]>,
 }
 
 /// Réglages lus dans CameraSettings (balise 0x2020) de la MakerNote
@@ -256,10 +286,20 @@ fn olympus_settings(mn: &[u8]) -> Option<Olympus> {
         [1, -2, 1] => Some("fort"),
         _ => None,
     });
+    // Zone AF 0x030a : [largeur, hauteur du repère (640 × 480), x, y, l, h, …],
+    // relevée sur OM-1 Mk II ; elle suit le sujet (visage détecté) vue par vue.
+    let af = values(0x030a).and_then(|v| {
+        let [fw, fh, x, y, w, h, ..] = v[..] else { return None };
+        (fw > 0 && fh > 0 && w > 0 && h > 0 && x + w <= fw && y + h <= fh).then(|| {
+            let (fw, fh) = (fw as f32, fh as f32);
+            [x as f32 / fw, y as f32 / fh, w as f32 / fw, h as f32 / fh]
+        })
+    });
     Some(Olympus {
         drive,
         picture_mode,
         noise_filter,
+        af,
     })
 }
 
@@ -271,4 +311,22 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146097 + doe - 719468
+}
+
+#[cfg(test)]
+mod tests {
+    use super::orient_rect;
+
+    #[test]
+    fn zone_af_orientee() {
+        let r = [0.5, 0.25, 0.1, 0.2];
+        let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        assert!(close(orient_rect(r, 1), r));
+        // Rotation de 90° (6) : le haut du capteur passe à droite.
+        let [x, y, w, h] = orient_rect(r, 6);
+        assert!((x - 0.55).abs() < 1e-6 && (y - 0.5).abs() < 1e-6 && (w - 0.2).abs() < 1e-6 && (h - 0.1).abs() < 1e-6);
+        // Rotation de 270° (8) : le haut du capteur passe à gauche.
+        let [x, y, ..] = orient_rect(r, 8);
+        assert!((x - 0.25).abs() < 1e-6 && (y - 0.4).abs() < 1e-6);
+    }
 }

@@ -20,6 +20,10 @@ C'est là qu'on vérifie la netteté, sur un visage par exemple.
 • Un clic sur la photo fige la loupe à cet endroit : elle y reste d'une vue à \
 l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
 Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
+• Le cadre vert sur la photo est la zone de mise au point enregistrée par le \
+boîtier (OM System) : elle suit le sujet, souvent le visage détecté. La touche A \
+place la loupe sur cette zone, vue après vue : elle suit le visage dans toute la \
+rafale, même s'il se déplace dans le cadre.
 
 RAFALES ET VUE À PLAT
 
@@ -95,6 +99,10 @@ F1 à F5 : étiquette rouge, jaune, verte, bleue, violette (un deuxième appui l
 COPIE
 
 Ctrl+C : copie la sélection (filtrées, sinon retenues) ; Ctrl+V dans Fichiers
+
+LOUPE
+
+A : loupe sur la zone AF (cadre vert) ↔ loupe sous le pointeur
 
 FENÊTRE
 

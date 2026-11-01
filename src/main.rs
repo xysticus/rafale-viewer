@@ -24,7 +24,7 @@ use loader::{Decoded, Job, Loader, Quality};
 use marks::{Color, Filter, Mark};
 use meta::Meta;
 use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
-use render::{Rect, Renderer};
+use render::{LoupeKind, Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
 const HOLD_DELAY: Duration = Duration::from_millis(300);
@@ -101,6 +101,8 @@ struct App {
     pin: Option<(f32, f32)>,
     /// Rafale où la loupe a été figée : elle est libérée quand on en sort.
     pin_burst: Option<usize>,
+    /// Loupe AF (touche A) : la loupe se place sur la zone AF de chaque vue.
+    af_loupe: bool,
 
     /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
     scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
@@ -191,6 +193,7 @@ impl App {
             cursor_hidden: false,
             pin: None,
             pin_burst: None,
+            af_loupe: false,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -280,6 +283,13 @@ impl App {
                 "c" if pressed && ctrl => return self.copy_selection(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
+                "a" if pressed => {
+                    self.af_loupe = !self.af_loupe;
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                    return;
+                }
                 "q" if pressed => return event_loop.exit(),
                 // Rejet : X comme Lightroom, R comme darktable.
                 "x" | "r" if pressed => {
@@ -632,6 +642,27 @@ impl App {
         self.edit_mark(|m| m.color = if m.color == Some(color) { None } else { Some(color) });
     }
 
+    /// Zone AF de la photo affichée, en proportions de la photo.
+    fn shown_af(&self) -> Option<[f32; 4]> {
+        let index = self.shown?.index;
+        self.metas[index].as_ref()?.af_display()
+    }
+
+    /// Où placer la loupe (pixels écran) et de quel type : figée, sur l'AF, ou
+    /// sous le pointeur (la loupe AF revient au pointeur si la vue n'a pas de zone AF).
+    fn loupe_target(&self) -> Option<((f32, f32), LoupeKind)> {
+        let r = self.renderer.as_ref()?;
+        if let Some(uv) = self.pin {
+            return r.screen_point(uv).map(|p| (p, LoupeKind::Pinned));
+        }
+        if self.af_loupe {
+            if let Some([x, y, w, h]) = self.shown_af() {
+                return r.screen_point((x + w / 2.0, y + h / 2.0)).map(|p| (p, LoupeKind::Af));
+            }
+        }
+        self.cursor.map(|p| (p, LoupeKind::Pointer))
+    }
+
     /// La loupe ne s'affiche qu'à l'arrêt, sur l'image en pleine résolution.
     fn loupe_allowed(&self) -> bool {
         self.scrolling == 0
@@ -712,6 +743,12 @@ impl App {
             Line {
                 text: if self.pin.is_some() {
                     "Loupe figée · clic droit pour la libérer".to_string()
+                } else if self.af_loupe {
+                    if meta.is_some_and(|m| m.af.is_some()) {
+                        "Loupe sur la zone AF · A pour la couper".to_string()
+                    } else {
+                        "Loupe AF : pas de zone AF pour cette photo".to_string()
+                    }
                 } else {
                     String::new()
                 },
@@ -1135,6 +1172,14 @@ impl App {
                 }
             }
         }
+        let af = self.shown_af();
+        if let Some(r) = &mut self.renderer {
+            if r.set_af(af) {
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+        }
         let loupe_allowed = self.loupe_allowed();
         if loupe_allowed != self.loupe_allowed {
             self.loupe_allowed = loupe_allowed;
@@ -1200,14 +1245,11 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let target = self.loupe_target().filter(|_| self.loupe_allowed);
+                let kind = target.map_or(LoupeKind::Pointer, |(_, k)| k);
                 if let Some(r) = &mut self.renderer {
-                    let loupe_at = match self.pin {
-                        Some(uv) => r.screen_point(uv),
-                        None => self.cursor,
-                    }
-                    .filter(|_| self.loupe_allowed);
                     // Pointeur masqué sous la loupe, pour ne pas cacher le visage.
-                    let hide = r.render(loupe_at, self.pin.is_some());
+                    let hide = r.render(target.map(|(p, _)| p), kind);
                     if hide != self.cursor_hidden {
                         self.cursor_hidden = hide;
                         if let Some(w) = &self.window {
@@ -1219,7 +1261,8 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = Some((position.x as f32, position.y as f32));
                 self.drag_scrollbar();
-                if self.loupe_allowed && self.pin.is_none() {
+                let follows = matches!(self.loupe_target(), Some((_, LoupeKind::Pointer)));
+                if self.loupe_allowed && follows {
                     if let Some(w) = &self.window {
                         w.request_redraw();
                     }

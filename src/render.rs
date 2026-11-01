@@ -15,6 +15,17 @@ const BACKGROUND: wgpu::Color = wgpu::Color {
     a: 1.0,
 };
 /// Côté de la loupe, en pixels écran (= pixels de l'image, à 100 %).
+/// Couleur de la zone AF (cadre sur la photo, bordure de la loupe AF).
+const AF_COLOR: [u8; 4] = [120, 230, 90, 255];
+
+/// Où est la loupe : sous le pointeur, figée par un clic, ou sur la zone AF.
+#[derive(Clone, Copy, PartialEq)]
+pub enum LoupeKind {
+    Pointer,
+    Pinned,
+    Af,
+}
+
 /// Épaisseur du cadre de la vignette active.
 const FRAME_WIDTH: f32 = 4.0;
 const LOUPE_SIZE: f32 = 600.0;
@@ -76,6 +87,10 @@ pub struct Renderer {
     border: Quad,
     /// Bordure de la loupe figée : bleue, comme la photo active.
     border_pinned: Quad,
+    /// Cadre de la zone AF sur la photo (un quad par côté), et bordure de la loupe AF.
+    af_frame: [Quad; 4],
+    af_rect: Option<[f32; 4]>,
+    border_af: Quad,
     /// Repère de position dans la rafale courante (rectangle blanc).
     marker: Quad,
     marker_rect: Option<Rect>,
@@ -211,6 +226,9 @@ impl Renderer {
         let border = make_quad(&device, &layout, &nearest, &border);
         let border_pinned = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
         let border_pinned = make_quad(&device, &layout, &nearest, &border_pinned);
+        let green = upload(&device, &queue, &AF_COLOR, 1, 1);
+        let af_frame = std::array::from_fn(|_| make_quad(&device, &layout, &nearest, &green));
+        let border_af = make_quad(&device, &layout, &nearest, &green);
         // Photo active : bleu, en vue rafales (repère) comme à plat (cadre).
         let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
         let marker = make_quad(&device, &layout, &nearest, &blue);
@@ -232,6 +250,9 @@ impl Renderer {
             nearest,
             border,
             border_pinned,
+            af_frame,
+            af_rect: None,
+            border_af,
             marker,
             marker_rect: None,
             frame,
@@ -317,6 +338,13 @@ impl Renderer {
     pub fn image_point(&self, screen: (f32, f32)) -> Option<(f32, f32)> {
         let r = self.image_rect()?;
         r.contains(screen).then(|| ((screen.0 - r.x) / r.w, (screen.1 - r.y) / r.h))
+    }
+
+    /// Zone AF de la photo affichée, en proportions de la photo ; renvoie `true` si elle a changé.
+    pub fn set_af(&mut self, rect: Option<[f32; 4]>) -> bool {
+        let changed = rect != self.af_rect;
+        self.af_rect = rect;
+        changed
     }
 
     /// Inverse de `image_point`.
@@ -410,8 +438,8 @@ impl Renderer {
     }
 
     /// Dessine la vue ; renvoie `true` si la loupe suit le pointeur (qu'il faut
-    /// alors masquer). Une loupe figée (`pinned`) a une bordure bleue.
-    pub fn render(&mut self, loupe_at: Option<(f32, f32)>, pinned: bool) -> bool {
+    /// alors masquer). Loupe figée : bordure bleue ; loupe AF : verte.
+    pub fn render(&mut self, loupe_at: Option<(f32, f32)>, kind: LoupeKind) -> bool {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
@@ -436,6 +464,21 @@ impl Renderer {
         if let (Some(s), Some(r)) = (&self.shown, self.image_rect()) {
             self.place(&s.image, r, full_src, s.orientation);
             draws.push(&s.image);
+            // Cadre de la zone AF, 2 px à l'extérieur de la zone.
+            if let Some([x, y, w, h]) = self.af_rect {
+                let (x, y, w, h) = (r.x + x * r.w, r.y + y * r.h, w * r.w, h * r.h);
+                let t = 2.0;
+                let sides = [
+                    Rect { x: x - t, y: y - t, w: w + 2.0 * t, h: t },
+                    Rect { x: x - t, y: y + h, w: w + 2.0 * t, h: t },
+                    Rect { x: x - t, y, w: t, h },
+                    Rect { x: x + w, y, w: t, h },
+                ];
+                for (quad, side) in self.af_frame.iter().zip(sides) {
+                    self.place(quad, side, full_src, 1);
+                    draws.push(quad);
+                }
+            }
         }
         if let Some(p) = &self.panel {
             let (ww, _) = self.window_size();
@@ -492,12 +535,16 @@ impl Renderer {
                     w: dst.w + 2.0 * b,
                     h: dst.h + 2.0 * b,
                 };
-                let border = if pinned { &self.border_pinned } else { &self.border };
+                let border = match kind {
+                    LoupeKind::Pointer => &self.border,
+                    LoupeKind::Pinned => &self.border_pinned,
+                    LoupeKind::Af => &self.border_af,
+                };
                 self.place(border, frame, full_src, 1);
                 self.place(&s.loupe, dst, src, s.orientation);
                 draws.push(border);
                 draws.push(&s.loupe);
-                loupe = !pinned;
+                loupe = kind == LoupeKind::Pointer;
             }
         }
 
