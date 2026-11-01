@@ -43,6 +43,7 @@ Les threads réveillent la boucle winit par `EventLoopProxy::send_event(())`. Le
 | `help.rs` | textes des fenêtres d'aide (principes, raccourcis) |
 | `sharp.rs` | indice de netteté (variance du laplacien) sur la zone AF |
 | `examples/bench.rs` | banc de mesure lecture disque / décodage |
+| `packaging/` | `.desktop`, icône SVG, `install.sh` (installation dans `~/.local`) |
 
 ## 3. Défilé
 
@@ -237,5 +238,6 @@ Les parties propres au boîtier et au bureau sont peu nombreuses et isolées :
 | Zone AF (`CameraSettings` 0x030a) | `meta.rs` : `olympus_settings` → `Meta::af` | Autre marque : trouver la balise équivalente (Sony, Canon, Nikon enregistrent aussi un point ou une zone AF) ; sans elle, ni cadre ni loupe AF. |
 | Extensions RAW | `raw.rs` : `RAW_EXTENSIONS` | Déjà large (ORF, DNG, CR2/CR3, NEF, ARW, RAF, RW2…). |
 | Copie vers le gestionnaire de fichiers | `main.rs` : `clipboard_files` | `wl-copy --type x-special/gnome-copied-files` vise Nautilus. KDE / Dolphin : type `text/uri-list` ; X11 : `xclip` au lieu de `wl-copy`. |
-| Fenêtres d'aide | `main.rs` : `show_help` | `zenity` ; sous KDE, `kdialog --textbox` ou un affichage dans le panneau. |
+| Fenêtres d'aide, choix du dossier, erreurs au lancement | `main.rs` : `show_help`, `pick_folder`, `fail` | `zenity` ; sous KDE, `kdialog` (`--textbox`, `--getexistingdirectory`, `--error`). |
+| Intégration au bureau | `packaging/` | Le `.desktop` (freedesktop) vaut pour KDE aussi ; l'identifiant de fenêtre Wayland `rafale-viewer` (`with_name`) le relie à la fenêtre. |
 | Police du panneau | `panel.rs` : `system_font` | `fc-match sans-serif`, présent sur la plupart des distributions. |

@@ -12,6 +12,7 @@ Principe commun à toutes les pistes : **ne jamais ralentir le défilé.** Tout 
 | 1 | Loupe figée | Un clic sur la photo fige la loupe à cet endroit pour toute la rafale ; clic droit, ou changement de rafale, pour la libérer. |
 | 2 | Zone AF | Cadre vert sur la zone de mise au point enregistrée par le boîtier (MakerNote OM, balise 0x030a). Elle suit le sujet vue par vue, le plus souvent le visage détecté. Touche C : afficher ou masquer le cadre. Touche A : loupe AF, qui suit la zone vue après vue. |
 | 3 | Netteté AF | Indice de netteté (variance du laplacien) sur la zone AF, mesuré à l'arrêt pour toute la rafale (~1 s pour 15 vues). Le panneau affiche le pourcentage de la plus nette et le rang. Touche N : aller à la plus nette. |
+| 6 | Intégration à GNOME | `packaging/install.sh` installe dans `~/.local` le programme, une icône et un `.desktop` : entrée « Rafale » dans le menu, *Ouvrir avec… › Rafale* sur un dossier ou une photo. Sans argument, Rafale demande le dossier ; sur une photo, il ouvre son dossier en commençant par elle ; hors terminal, les erreurs s'affichent dans une fenêtre. |
 
 ## À faire
 
@@ -22,10 +23,6 @@ Envoyer à la corbeille de GNOME (`gio trash`, donc récupérable) les photos ma
 ### 5. « Ouvrir les retenues dans… »
 
 Un bouton qui lance le logiciel de retouche (RawTherapee, darktable…) directement sur les RAW retenus, ou sur la sélection filtrée. C'est la suite de la copie vers Fichiers. À trancher : quel logiciel par défaut, et comment le choisir (fichier de réglages, ou les applications enregistrées dans GNOME pour le type ORF).
-
-### 6. Intégration à GNOME
-
-Un fichier `.desktop` et une icône : « Ouvrir avec Rafale » au clic droit sur un dossier dans Fichiers, et une entrée dans le menu des applications. Plus besoin du terminal. Petit chantier, utile tous les jours.
 
 ### 7. Reprise à la dernière photo vue
 

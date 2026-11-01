@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Rafale
+GenericName=Tri de rafales photo
+Comment=Trier vite de longues rafales de JPEG
+Exec=rafale-viewer %f
+Icon=rafale-viewer
+Terminal=false
+Categories=Graphics;Photography;Viewer;
+MimeType=inode/directory;image/jpeg;
+StartupWMClass=rafale-viewer
+Keywords=photo;rafale;burst;tri;jpeg;

@@ -16,13 +16,26 @@ cargo build --release
 
 Le programme se trouve ensuite dans `target/release/rafale-viewer`.
 
+**Intégration à GNOME** (sans sudo, dans ton dossier personnel) :
+
+```
+./packaging/install.sh
+```
+
+Le script copie le programme dans `~/.local/bin`, et installe l'icône et l'entrée de menu dans `~/.local/share`. Relance-le après chaque `cargo build --release` pour mettre le programme à jour. Les applications par défaut ne changent pas : Fichiers ouvre toujours les dossiers, et la visionneuse d'images les JPEG.
+
 ## Lancement
 
+- **Menu des applications :** « Rafale ». Une fenêtre demande le dossier à trier.
+- **Fichiers :** clic droit sur un dossier, ou sur une photo, puis *Ouvrir avec… › Rafale*. Sur une photo, Rafale ouvre son dossier en commençant par elle.
+- **Terminal :**
+
 ```
-rafale-viewer <dossier> [--fps N]
+rafale-viewer [dossier | photo.jpg] [--fps N]
 ```
 
-- `<dossier>` : le dossier qui contient les JPEG. Seuls les fichiers `.jpg` et `.jpeg` sont pris, dans l'ordre alphabétique de leur nom.
+- `dossier` : le dossier qui contient les JPEG. Seuls les fichiers `.jpg` et `.jpeg` sont pris, dans l'ordre alphabétique de leur nom. Sans argument, une fenêtre demande le dossier.
+- `photo.jpg` : ouvre le dossier de cette photo, en commençant par elle.
 - `--fps N` : cadence du défilé quand une flèche est maintenue. Elle vaut 25 images/s par défaut.
 - `--version` : affiche la version. Elle figure aussi en tête de la fenêtre « Principes ».
 

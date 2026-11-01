@@ -29,8 +29,10 @@ Rafale a été écrit entièrement par une IA (Claude Code), sous la direction d
 ```
 sudo dnf install cargo cmake nasm wl-clipboard zenity
 cargo build --release
-./target/release/rafale-viewer <dossier>
+./packaging/install.sh
 ```
+
+Le script installe Rafale pour l'utilisateur courant (`~/.local`) : entrée « Rafale » dans le menu des applications, et *Ouvrir avec… › Rafale* au clic droit sur un dossier ou une photo dans Fichiers. En ligne de commande : `rafale-viewer <dossier>`.
 
 ## Documentation
 

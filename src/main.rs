@@ -149,7 +149,7 @@ struct App {
 }
 
 impl App {
-    fn new(dir: PathBuf, files: Vec<PathBuf>, proxy: EventLoopProxy<()>, fps: f64) -> Self {
+    fn new(dir: PathBuf, files: Vec<PathBuf>, start: usize, proxy: EventLoopProxy<()>, fps: f64) -> Self {
         let n = files.len();
         let files = Arc::new(files);
         let (scan_tx, scan_rx) = crossbeam_channel::unbounded();
@@ -183,7 +183,7 @@ impl App {
             loader: None,
             reduced: LruCache::new(NonZeroUsize::new(64).unwrap()),
             full: LruCache::new(NonZeroUsize::new(6).unwrap()),
-            cur: 0,
+            cur: start,
             heading: 1,
             forward_held: false,
             backward_held: false,
@@ -1308,9 +1308,15 @@ impl ApplicationHandler for App {
         let window = Arc::new(
             event_loop
                 .create_window(
-                    Window::default_attributes()
-                        .with_title("rafale")
-                        .with_maximized(true),
+                    {
+                        // Identifiant d'application = nom du .desktop : GNOME associe
+                        // la fenêtre à son icône.
+                        use winit::platform::wayland::WindowAttributesExtWayland;
+                        Window::default_attributes()
+                            .with_title("rafale")
+                            .with_maximized(true)
+                            .with_name("rafale-viewer", "rafale-viewer")
+                    },
                 )
                 .expect("création de la fenêtre"),
         );
@@ -1504,7 +1510,7 @@ fn list_jpegs(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let mut dir = None;
+    let mut target = None;
     let mut fps = DEFAULT_FPS;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -1521,29 +1527,61 @@ fn main() {
                 println!("rafale-viewer {}", env!("CARGO_PKG_VERSION"));
                 return;
             }
-            _ if dir.is_none() => dir = Some(PathBuf::from(arg)),
+            _ if target.is_none() => target = Some(PathBuf::from(arg)),
             _ => usage(),
         }
     }
-    let dir = dir.unwrap_or_else(|| usage());
+    // Sans argument (lancé depuis le menu) : choix du dossier.
+    let Some(target) = target.or_else(pick_folder) else {
+        return;
+    };
+    // Une photo donnée : son dossier, en commençant par elle.
+    let (dir, start_file) = if target.is_file() {
+        let dir = target.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        (dir, Some(target))
+    } else {
+        (target, None)
+    };
     let files = match list_jpegs(&dir) {
         Ok(f) if !f.is_empty() => f,
-        Ok(_) => {
-            eprintln!("aucun JPEG dans {}", dir.display());
-            std::process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("{} : {e}", dir.display());
-            std::process::exit(1);
-        }
+        Ok(_) => fail(&format!("Aucune photo JPEG dans {}", dir.display())),
+        Err(e) => fail(&format!("{} : {e}", dir.display())),
     };
+    let start = start_file
+        .and_then(|f| {
+            let name = f.file_name()?;
+            files.iter().position(|p| p.file_name() == Some(name))
+        })
+        .unwrap_or(0);
     log::info!("{} JPEG dans {}", files.len(), dir.display());
 
     let event_loop = EventLoop::<()>::with_user_event()
         .build()
         .expect("boucle d'événements");
-    let mut app = App::new(dir, files, event_loop.create_proxy(), fps);
+    let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps);
     event_loop.run_app(&mut app).expect("boucle d'événements");
+}
+
+/// Choix d'un dossier de photos (zenity) ; None si l'utilisateur annule.
+fn pick_folder() -> Option<PathBuf> {
+    let out = Command::new("zenity")
+        .args(["--file-selection", "--directory", "--title", "Rafale — dossier de photos à trier"])
+        .output()
+        .map_err(|e| log::error!("zenity : {e}"))
+        .ok()?;
+    let path = String::from_utf8(out.stdout).ok()?;
+    let path = path.trim_end_matches('\n');
+    (out.status.success() && !path.is_empty()).then(|| PathBuf::from(path))
+}
+
+/// Erreur fatale : sur le terminal, et dans une fenêtre si on a été lancé sans terminal.
+fn fail(message: &str) -> ! {
+    use std::io::IsTerminal;
+    eprintln!("{message}");
+    if !std::io::stderr().is_terminal() {
+        let _ = Command::new("zenity").args(["--error", "--title", "Rafale", "--text", message]).status();
+    }
+    std::process::exit(1);
 }
 
 #[cfg(test)]
@@ -1556,6 +1594,6 @@ mod tests {
 }
 
 fn usage() -> ! {
-    eprintln!("usage : rafale-viewer <dossier> [--fps N] | --version");
+    eprintln!("usage : rafale-viewer [dossier | photo.jpg] [--fps N] | --version");
     std::process::exit(2);
 }
