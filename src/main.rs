@@ -35,6 +35,8 @@ const PREFETCH: usize = 10;
 const DEFAULT_FPS: f64 = 25.0;
 /// La vue à plat (une vignette par photo) n'est proposée qu'en dessous de ce nombre de photos.
 const FLAT_MAX: usize = 300;
+/// Vue au lancement : à plat, sauf si une rafale dépasse ce nombre de photos.
+const FLAT_BURST_MAX: usize = 5;
 
 struct Burst {
     start: usize,
@@ -104,6 +106,8 @@ struct App {
     burst_of: Vec<usize>,
     /// Vue à plat : une vignette par photo au lieu d'une ligne par rafale.
     flat: bool,
+    /// Vue choisie au bouton : elle n'est plus changée automatiquement.
+    flat_chosen: bool,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
     help: Option<Child>,
     /// Décalage de la liste à la molette (en lignes), remis à zéro au changement
@@ -180,7 +184,8 @@ impl App {
             scanned: 0,
             bursts: Vec::new(),
             burst_of: Vec::new(),
-            flat: false,
+            flat: true,
+            flat_chosen: false,
             help: None,
             list_offset: 0,
             list_group: None,
@@ -538,6 +543,7 @@ impl App {
             Widget::ClearFilter => f = Filter::default(),
             Widget::Bursts | Widget::Flat => {
                 self.flat = widget == Widget::Flat;
+                self.flat_chosen = true;
                 self.list_offset = 0;
                 return;
             }
@@ -702,6 +708,10 @@ impl App {
             }),
         }
         self.burst_of.push(self.bursts.len() - 1);
+        // Une vraie rafale détectée : la vue par rafales s'impose (sauf choix au bouton).
+        if !self.flat_chosen && self.bursts.last().unwrap().len > FLAT_BURST_MAX {
+            self.flat = false;
+        }
         self.metas[index] = Some(meta);
         let last = self.bursts.last().unwrap();
         let rate = self.burst_rate(last);
