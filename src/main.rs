@@ -5,6 +5,7 @@ mod raw;
 mod meta;
 mod panel;
 mod render;
+mod sharp;
 
 use std::num::NonZeroUsize;
 use std::io::Write;
@@ -99,6 +100,10 @@ struct App {
     /// Loupe figée : point de la photo (proportions 0..1) où elle reste d'une vue
     /// à l'autre, au lieu de suivre le pointeur.
     pin: Option<(f32, f32)>,
+    /// Indice de netteté sur la zone AF (calculé à l'arrêt, en tâche de fond), et
+    /// calcul déjà fait (même s'il n'a rien donné : pas de zone AF exploitable).
+    sharpness: Vec<Option<f32>>,
+    sharp_done: Vec<bool>,
     /// Rafale où la loupe a été figée : elle est libérée quand on en sort.
     pin_burst: Option<usize>,
     /// Loupe AF (touche A) : la loupe se place sur la zone AF de chaque vue.
@@ -143,6 +148,7 @@ struct App {
 
 impl App {
     fn new(dir: PathBuf, files: Vec<PathBuf>, proxy: EventLoopProxy<()>, fps: f64) -> Self {
+        let n = files.len();
         let files = Arc::new(files);
         let (scan_tx, scan_rx) = crossbeam_channel::unbounded();
         meta::spawn(files.clone(), scan_tx, proxy.clone());
@@ -193,6 +199,8 @@ impl App {
             cursor_hidden: false,
             pin: None,
             pin_burst: None,
+            sharpness: vec![None; n],
+            sharp_done: vec![false; n],
             af_loupe: false,
             scan_rx,
             scanned: 0,
@@ -283,6 +291,7 @@ impl App {
                 "c" if pressed && ctrl => return self.copy_selection(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
+                "n" if pressed => return self.jump_sharpest(),
                 "a" if pressed => {
                     self.af_loupe = !self.af_loupe;
                     if let Some(w) = &self.window {
@@ -532,6 +541,7 @@ impl App {
             let cached = match quality {
                 Quality::Reduced => self.is_ready(index),
                 Quality::Full => self.full.contains(&index),
+                Quality::Sharpness(_) => self.sharp_done[index],
             };
             if !cached {
                 jobs.push(Job { index, quality });
@@ -552,6 +562,19 @@ impl App {
         if stationary {
             want(self.neighbor(cur, h, 1), Quality::Full);
             want(self.neighbor(cur, -h, 1), Quality::Full);
+            // En dernier : netteté de la photo affichée, puis des autres vues de
+            // la rafale, des plus proches aux plus lointaines.
+            if let Some(&b) = self.burst_of.get(cur) {
+                let burst = &self.bursts[b];
+                let mut members: Vec<usize> = (burst.start..burst.start + burst.len).collect();
+                members.sort_by_key(|&i| i.abs_diff(cur));
+                for i in members {
+                    if let Some(af) = self.metas[i].as_ref().and_then(|m| m.af) {
+                        let af = af.map(|v| (v * 10_000.0).round() as u16);
+                        want(Some(i), Quality::Sharpness(af));
+                    }
+                }
+            }
         }
         jobs
     }
@@ -642,6 +665,49 @@ impl App {
         self.edit_mark(|m| m.color = if m.color == Some(color) { None } else { Some(color) });
     }
 
+    /// Vues de la rafale de `i` qui passent le filtre.
+    fn burst_members(&self, i: usize) -> Vec<usize> {
+        let Some(&b) = self.burst_of.get(i) else { return Vec::new() };
+        let burst = &self.bursts[b];
+        if self.filter.active() {
+            visible_in(&self.visible, burst.start, burst.len).to_vec()
+        } else {
+            (burst.start..burst.start + burst.len).collect()
+        }
+    }
+
+    /// Netteté de la photo affichée, relative à la plus nette de sa rafale :
+    /// (pourcentage, rang, vues mesurées, vues mesurables). None pour une vue isolée.
+    fn sharpness_rank(&self) -> Option<(Option<(u32, usize)>, usize, usize)> {
+        let members = self.burst_members(self.cur);
+        if members.len() < 2 {
+            return None;
+        }
+        let measurable = members.iter().filter(|&&i| self.metas[i].as_ref().is_some_and(|m| m.af.is_some())).count();
+        if measurable == 0 {
+            return None;
+        }
+        let scores: Vec<f32> = members.iter().filter_map(|&i| self.sharpness[i]).collect();
+        let best = scores.iter().copied().fold(0.0f32, f32::max);
+        let cur = self.sharpness[self.cur].filter(|_| best > 0.0).map(|s| {
+            let rank = 1 + scores.iter().filter(|&&o| o > s).count();
+            ((100.0 * s / best).round() as u32, rank)
+        });
+        Some((cur, scores.len(), measurable))
+    }
+
+    /// N : vue la plus nette (parmi celles déjà mesurées) de la rafale.
+    fn jump_sharpest(&mut self) {
+        let best = self
+            .burst_members(self.cur)
+            .into_iter()
+            .filter_map(|i| Some((i, self.sharpness[i]?)))
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((i, _)) = best {
+            self.jump(i, Instant::now());
+        }
+    }
+
     /// Zone AF de la photo affichée, en proportions de la photo.
     fn shown_af(&self) -> Option<[f32; 4]> {
         let index = self.shown?.index;
@@ -675,6 +741,20 @@ impl App {
     }
 
     fn update_panel(&mut self) {
+        let (sharp_text, sharp_color) = match self.sharpness_rank() {
+            None => (String::new(), [150, 150, 150]),
+            Some((cur, done, total)) => {
+                let progress = if done < total { format!("   (mesure {done} / {total})") } else { String::new() };
+                match cur {
+                    Some((pct, rank)) => (
+                        format!("Netteté AF : {pct} % de la plus nette · rang {rank} / {total}{progress}"),
+                        if rank == 1 { [110, 210, 120] } else { [175, 175, 175] },
+                    ),
+                    None if self.sharp_done[self.cur] => ("Netteté AF : non mesurable".to_string(), [150, 150, 150]),
+                    None => (format!("Netteté AF : mesure…{progress}"), [150, 150, 150]),
+                }
+            }
+        };
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -756,6 +836,7 @@ impl App {
                 color: [90, 160, 255],
                 gap: 3.0,
             },
+            Line { text: sharp_text, size: 16.0, color: sharp_color, gap: 3.0 },
             Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
                 size: 17.0,
@@ -1131,10 +1212,15 @@ impl App {
         }
         let Some(loader) = &self.loader else { return };
         while let Some(done) = loader.try_recv() {
-            match done.job.quality {
-                Quality::Reduced => self.reduced.put(done.job.index, done.image),
-                Quality::Full => self.full.put(done.job.index, done.image),
-            };
+            let i = done.job.index;
+            match (done.job.quality, done.image) {
+                (Quality::Reduced, Some(img)) => _ = self.reduced.put(i, img),
+                (Quality::Full, Some(img)) => _ = self.full.put(i, img),
+                _ => {
+                    self.sharpness[i] = done.score;
+                    self.sharp_done[i] = true;
+                }
+            }
         }
 
         let now = Instant::now();
