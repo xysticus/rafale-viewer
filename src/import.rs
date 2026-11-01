@@ -2,12 +2,14 @@
 //! dans `~/Images/AAAA-MM-JJ/` (jour de prise de vue), les RAW dans `raw/`.
 //! La carte n'est jamais modifiée ; un fichier déjà importé (même nom, même
 //! taille) est sauté ; chaque copie passe par un fichier temporaire renommé
-//! à la fin, pour qu'une interruption ne laisse pas de fichier tronqué.
+//! à la fin, pour qu'une interruption ne laisse pas de fichier tronqué ; le
+//! fichier copié est daté de la prise de vue (EXIF, fuseau local).
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Dossier DCIM d'une carte : la racine de la carte, DCIM lui-même ou l'un de
 /// ses sous-dossiers (100OMSYS…).
@@ -38,6 +40,9 @@ struct Copy {
     src: PathBuf,
     dest: PathBuf,
     size: u64,
+    /// Date à donner au fichier : la prise de vue (EXIF, heure locale), à défaut
+    /// celle de la carte, souvent décalée du fuseau (FAT sans fuseau horaire).
+    mtime: Option<SystemTime>,
 }
 
 pub struct Plan {
@@ -81,8 +86,9 @@ pub fn plan(dcim: &Path, dest_root: &Path) -> Plan {
         bytes: 0,
         dest_root: dest_root.to_path_buf(),
     };
-    // Jour des JPEG, réutilisé pour le RAW de même nom (lecture plus sûre).
-    let mut day_of: HashMap<(PathBuf, String), String> = HashMap::new();
+    // Prise de vue des JPEG, réutilisée pour le RAW de même nom (lecture plus sûre).
+    let mut taken_of: HashMap<(PathBuf, String), (String, i64)> = HashMap::new();
+    let mut offsets: HashMap<String, Option<i64>> = HashMap::new();
     let (jpegs, others): (Vec<PathBuf>, Vec<PathBuf>) = files.into_iter().partition(|p| is_jpeg(p));
     for (path, raw) in jpegs.into_iter().map(|p| (p, false)).chain(others.into_iter().map(|p| (p, true))) {
         if raw && !crate::raw::is_raw(&path) {
@@ -90,14 +96,16 @@ pub fn plan(dcim: &Path, dest_root: &Path) -> Plan {
             continue;
         }
         let key = (path.parent().unwrap_or(Path::new("")).to_path_buf(), stem(&path));
-        let day = if raw { day_of.get(&key).cloned() } else { None }.or_else(|| crate::meta::capture_day(&path));
-        let Some(day) = day else {
+        let taken = if raw { taken_of.get(&key).cloned() } else { None }.or_else(|| crate::meta::capture_time(&path));
+        let Some((day, naive)) = taken else {
             plan.undated += 1;
             continue;
         };
         if !raw {
-            day_of.insert(key, day.clone());
+            taken_of.insert(key, (day.clone(), naive));
         }
+        let offset = *offsets.entry(day.clone()).or_insert_with(|| utc_offset(&day));
+        let mtime = offset.and_then(|o| u64::try_from(naive - o).ok()).map(|s| UNIX_EPOCH + Duration::from_secs(s));
         let size = path.metadata().map(|m| m.len()).unwrap_or(0);
         let mut dest = dest_root.join(&day);
         if raw {
@@ -114,11 +122,22 @@ pub fn plan(dcim: &Path, dest_root: &Path) -> Plan {
                 let count = plan.days.entry(day).or_default();
                 if raw { count.1 += 1 } else { count.0 += 1 }
                 plan.bytes += size;
-                plan.copies.push(Copy { src: path, dest, size });
+                plan.copies.push(Copy { src: path, dest, size, mtime });
             }
         }
     }
     plan
+}
+
+/// Décalage du fuseau local par rapport à UTC ce jour-là, en secondes (heure
+/// d'été comprise), d'après `date`.
+fn utc_offset(day: &str) -> Option<i64> {
+    let out = Command::new("date").args(["-d", &format!("{day} 12:00"), "+%z"]).output().ok()?;
+    let z = String::from_utf8(out.stdout).ok()?;
+    let z = z.trim();
+    let sign = if z.starts_with('-') { -1 } else { 1 };
+    let (h, m) = (z.get(1..3)?.parse::<i64>().ok()?, z.get(3..5)?.parse::<i64>().ok()?);
+    Some(sign * (h * 3600 + m * 60))
 }
 
 fn stem(p: &Path) -> String {
@@ -211,6 +230,10 @@ fn copy_one(c: &Copy) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
         return Err(std::io::Error::other(format!("copie incomplète ({n} octets sur {})", c.size)));
     }
+    // Date du fichier : la prise de vue, à défaut celle de la carte.
+    if let Some(t) = c.mtime.or_else(|| c.src.metadata().and_then(|m| m.modified()).ok()) {
+        std::fs::File::options().write(true).open(&tmp)?.set_modified(t)?;
+    }
     std::fs::rename(&tmp, &c.dest)
 }
 
@@ -240,6 +263,11 @@ mod tests {
         }
         assert!(dest.join("2026-10-29/PA290001.JPG").is_file());
         assert!(dest.join("2026-10-29/raw/PA290001.ORF").is_file());
+        // Daté de la prise de vue (20:45:07 heure locale), quel que soit le fuseau.
+        let mtime = dest.join("2026-10-29/PA290001.JPG").metadata().unwrap().modified().unwrap();
+        let secs = mtime.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let local = secs + utc_offset("2026-10-29").unwrap();
+        assert_eq!(local.rem_euclid(86400), 20 * 3600 + 45 * 60 + 7);
         assert_eq!(p.latest_day(), Some(dest.join("2026-10-29")));
 
         // Relancé : tout est déjà là.

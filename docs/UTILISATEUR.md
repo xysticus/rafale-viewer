@@ -58,7 +58,7 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 - **Déjà importé :** un fichier de même nom et de même taille est sauté. On peut relancer l'import sans risque, par exemple après une interruption.
 - **Non copiés, et signalés dans le résumé :** les vidéos et autres fichiers, les fichiers sans date lisible, et un fichier de même nom mais de taille différente déjà présent.
 - **La carte n'est jamais modifiée.** Formate-la dans l'appareil quand tu veux.
-- Chaque fichier est copié sous un nom temporaire (`.part`) puis renommé : une interruption ne laisse jamais de photo tronquée.
+- Chaque fichier est copié sous un nom temporaire (`.part`) puis renommé : une interruption ne laisse jamais de photo tronquée. Chaque fichier copié est daté de sa prise de vue (heure inscrite par l'appareil), et non de l'import. Rafale n'utilise pas la date des fichiers de la carte, souvent décalée d'une heure ou plus, car les cartes FAT ne connaissent pas les fuseaux horaires.
 
 ## L'écran
 
