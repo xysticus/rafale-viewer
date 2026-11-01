@@ -1,3 +1,4 @@
+mod bench;
 mod help;
 mod loader;
 mod marks;
@@ -146,14 +147,16 @@ struct App {
 
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
+    /// Défilé automatique chronométré (--bench-scroll S).
+    bench: Option<bench::Bench>,
 }
 
 impl App {
-    fn new(dir: PathBuf, files: Vec<PathBuf>, start: usize, proxy: EventLoopProxy<()>, fps: f64) -> Self {
+    fn new(dir: PathBuf, files: Vec<PathBuf>, start: usize, proxy: EventLoopProxy<()>, fps: f64, bench: Option<bench::Bench>) -> Self {
         let n = files.len();
         let files = Arc::new(files);
         let (scan_tx, scan_rx) = crossbeam_channel::unbounded();
-        meta::spawn(files.clone(), scan_tx, proxy.clone());
+        meta::spawn(files.clone(), scan_tx, waker(&proxy));
         // Un seul parcours du dossier pour trouver les XMP existants.
         let sidecars: std::collections::HashSet<PathBuf> = std::fs::read_dir(&dir)
             .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()).collect())
@@ -227,6 +230,7 @@ impl App {
             dragging: None,
             window: None,
             renderer: None,
+            bench,
         }
     }
 
@@ -1284,6 +1288,9 @@ impl App {
                     r.set_image(&img, quality == Quality::Full);
                 }
                 self.shown = Some(job);
+                if let Some(b) = &mut self.bench {
+                    b.on_shown(now, quality == Quality::Full);
+                }
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
@@ -1308,8 +1315,29 @@ impl App {
         self.update_list();
         self.update_title();
 
-        // Prochain réveil : pas de défilé, ou lancement de la pleine résolution.
+        // Défilé automatique : appui et relâchement simulés.
         let mut deadline = None;
+        if let Some(action) = self.bench.as_mut().map(|b| b.tick(now)) {
+            match action {
+                bench::Action::Press => {
+                    self.forward_held = true;
+                    self.direction_key(1, true, now);
+                }
+                bench::Action::Release => {
+                    self.forward_held = false;
+                    self.direction_key(1, false, now);
+                }
+                bench::Action::Exit => {
+                    if let Some(b) = &self.bench {
+                        println!("{}", b.report("winit + wgpu", self.step_interval));
+                    }
+                    event_loop.exit();
+                }
+                bench::Action::None => {}
+            }
+            deadline = self.bench.as_ref().map(|b| now + b.poll_interval());
+        }
+        // Prochain réveil : pas de défilé, ou lancement de la pleine résolution.
         if self.scrolling != 0 && self.next_step_at > now {
             deadline = Some(self.next_step_at);
         }
@@ -1349,7 +1377,7 @@ impl ApplicationHandler for App {
             event_loop.owned_display_handle(),
         ));
         self.window = Some(window);
-        self.loader = Some(Loader::new(self.files.clone(), self.proxy.clone()));
+        self.loader = Some(Loader::new(self.files.clone(), waker(&self.proxy)));
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: ()) {
@@ -1373,6 +1401,9 @@ impl ApplicationHandler for App {
                 if let Some(r) = &mut self.renderer {
                     // Pointeur masqué sous la loupe, pour ne pas cacher le visage.
                     let hide = r.render(target.map(|(p, _)| p), kind);
+                    if let Some(b) = &mut self.bench {
+                        b.on_frame(Instant::now());
+                    }
                     if hide != self.cursor_hidden {
                         self.cursor_hidden = hide;
                         if let Some(w) = &self.window {
@@ -1424,7 +1455,7 @@ impl ApplicationHandler for App {
                     w.request_redraw();
                 }
             }
-            WindowEvent::Focused(false) => {
+            WindowEvent::Focused(false) if self.bench.is_none() => {
                 // Un relâchement hors fenêtre ne nous parvient pas.
                 self.forward_held = false;
                 self.backward_held = false;
@@ -1509,6 +1540,14 @@ fn file_uri(path: &Path) -> String {
     uri
 }
 
+/// Réveil de la boucle winit, pour le chargeur et l'analyse des en-têtes.
+fn waker(proxy: &EventLoopProxy<()>) -> loader::Waker {
+    let proxy = std::sync::Mutex::new(proxy.clone());
+    Arc::new(move || {
+        let _ = proxy.lock().unwrap().send_event(());
+    })
+}
+
 /// Images visibles (liste triée) parmi `start..start + len`.
 fn visible_in(visible: &[usize], start: usize, len: usize) -> &[usize] {
     let a = visible.partition_point(|&v| v < start);
@@ -1536,6 +1575,7 @@ fn main() {
 
     let mut target = None;
     let mut fps = DEFAULT_FPS;
+    let mut bench = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -1545,6 +1585,10 @@ fn main() {
                     .and_then(|v| v.parse().ok())
                     .filter(|&f: &f64| f > 0.0)
                     .unwrap_or_else(|| usage());
+            }
+            "--bench-scroll" => {
+                let secs: f64 = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage());
+                bench = Some(bench::Bench::new(Duration::from_secs_f64(secs)));
             }
             "-h" | "--help" => usage(),
             "-V" | "--version" => {
@@ -1582,7 +1626,7 @@ fn main() {
     let event_loop = EventLoop::<()>::with_user_event()
         .build()
         .expect("boucle d'événements");
-    let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps);
+    let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps, bench);
     event_loop.run_app(&mut app).expect("boucle d'événements");
 }
 

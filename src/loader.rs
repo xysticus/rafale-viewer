@@ -18,7 +18,9 @@ use std::thread::JoinHandle;
 use crossbeam_channel::{Receiver, Sender};
 use lru::LruCache;
 use turbojpeg::{Decompressor, Image, PixelFormat, ScalingFactor};
-use winit::event_loop::EventLoopProxy;
+
+/// Réveil de la boucle principale (winit ou GTK) quand un résultat est prêt.
+pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
 /// Facteur de réduction utilisé pendant le défilé (DCT scaling).
 const REDUCED_SCALE: (usize, usize) = (1, 4);
@@ -95,7 +97,7 @@ pub struct Loader {
 }
 
 impl Loader {
-    pub fn new(files: Arc<Vec<PathBuf>>, proxy: EventLoopProxy<()>) -> Self {
+    pub fn new(files: Arc<Vec<PathBuf>>, wake: Waker) -> Self {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 queue: Vec::new(),
@@ -114,10 +116,10 @@ impl Loader {
             .map(|i| {
                 let shared = shared.clone();
                 let tx = tx.clone();
-                let proxy = proxy.clone();
+                let wake = wake.clone();
                 std::thread::Builder::new()
                     .name(format!("decode-{i}"))
-                    .spawn(move || decoder(&shared, &tx, &proxy))
+                    .spawn(move || decoder(&shared, &tx, &wake))
                     .expect("création du thread de décodage")
             })
             .collect();
@@ -198,7 +200,7 @@ fn reader(shared: &Shared, files: &[PathBuf]) {
     }
 }
 
-fn decoder(shared: &Shared, tx: &Sender<Done>, proxy: &EventLoopProxy<()>) {
+fn decoder(shared: &Shared, tx: &Sender<Done>, wake: &Waker) {
     let mut dec = Decompressor::new().expect("initialisation de turbojpeg");
     loop {
         let (job, raw) = {
@@ -251,7 +253,7 @@ fn decoder(shared: &Shared, tx: &Sender<Done>, proxy: &EventLoopProxy<()>) {
         // ne peut donc pas redemander une image déjà décodée mais pas encore reçue.
         let _ = tx.send(done);
         shared.state.lock().unwrap().in_flight.remove(&job);
-        let _ = proxy.send_event(());
+        wake();
     }
 }
 
