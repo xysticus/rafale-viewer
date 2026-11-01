@@ -15,6 +15,8 @@ const BACKGROUND: wgpu::Color = wgpu::Color {
     a: 1.0,
 };
 /// Côté de la loupe, en pixels écran (= pixels de l'image, à 100 %).
+/// Épaisseur du cadre de la vignette active.
+const FRAME_WIDTH: f32 = 3.0;
 const LOUPE_SIZE: f32 = 600.0;
 const LOUPE_BORDER: f32 = 2.0;
 /// Le panneau occupe la place laissée par une image 4:3 en hauteur pleine.
@@ -75,6 +77,9 @@ pub struct Renderer {
     /// Repère de position dans la rafale courante (rectangle blanc).
     marker: Quad,
     marker_rect: Option<Rect>,
+    /// Cadre de la vignette active (vue à plat) : un quad par côté.
+    frame: [Quad; 4],
+    frame_rect: Option<Rect>,
     /// Ascenseur de la liste : piste et curseur.
     track: Quad,
     thumb: Quad,
@@ -204,6 +209,8 @@ impl Renderer {
         let border = make_quad(&device, &layout, &nearest, &border);
         let white = upload(&device, &queue, &[235, 235, 235, 255], 1, 1);
         let marker = make_quad(&device, &layout, &nearest, &white);
+        let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
+        let frame = std::array::from_fn(|_| make_quad(&device, &layout, &nearest, &blue));
         let track = upload(&device, &queue, &[40, 40, 40, 255], 1, 1);
         let track = make_quad(&device, &layout, &nearest, &track);
         let thumb = upload(&device, &queue, &[120, 120, 120, 255], 1, 1);
@@ -222,6 +229,8 @@ impl Renderer {
             border,
             marker,
             marker_rect: None,
+            frame,
+            frame_rect: None,
             track,
             thumb,
             scrollbar: None,
@@ -318,6 +327,13 @@ impl Renderer {
     pub fn set_marker(&mut self, rect: Option<Rect>) -> bool {
         let changed = rect != self.marker_rect;
         self.marker_rect = rect;
+        changed
+    }
+
+    /// Cadre de la vignette active, autour de `rect` (pixels écran) ; renvoie `true` s'il a bougé.
+    pub fn set_frame(&mut self, rect: Option<Rect>) -> bool {
+        let changed = rect != self.frame_rect;
+        self.frame_rect = rect;
         changed
     }
 
@@ -428,6 +444,19 @@ impl Renderer {
         if let Some(r) = self.marker_rect {
             self.place(&self.marker, r, full_src, 1);
             draws.push(&self.marker);
+        }
+        if let Some(r) = self.frame_rect {
+            let t = FRAME_WIDTH;
+            let sides = [
+                Rect { x: r.x - t, y: r.y - t, w: r.w + 2.0 * t, h: t },
+                Rect { x: r.x - t, y: r.y + r.h, w: r.w + 2.0 * t, h: t },
+                Rect { x: r.x - t, y: r.y, w: t, h: r.h },
+                Rect { x: r.x + r.w, y: r.y, w: t, h: r.h },
+            ];
+            for (quad, side) in self.frame.iter().zip(sides) {
+                self.place(quad, side, full_src, 1);
+                draws.push(quad);
+            }
         }
         if let Some((track, thumb)) = self.scrollbar {
             self.place(&self.track, track, full_src, 1);

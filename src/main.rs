@@ -935,9 +935,11 @@ impl App {
             }
         }
 
-        // Repère de position de l'image courante : dans sa rafale, ou sous sa vignette.
+        // Image courante : repère de position dans sa rafale, ou cadre autour de sa vignette.
         let cur = self.cur;
-        let marker = self.tracks.iter().find(|t| (t.start..t.start + t.len).contains(&cur)).map(|t| {
+        let track = self.tracks.iter().find(|t| (t.start..t.start + t.len).contains(&cur));
+        let frame = track.and_then(|t| t.cell).map(|(x, y, w, h)| Rect { x: lx + x, y: ly + y, w, h });
+        let marker = track.filter(|t| t.cell.is_none()).map(|t| {
             let step = t.span / t.len as f32;
             Rect {
                 x: lx + t.x + step * (cur - t.start) as f32,
@@ -962,6 +964,7 @@ impl App {
             }
         });
         let changed = renderer.set_marker(marker)
+            | renderer.set_frame(frame)
             | renderer.set_scrollbar(self.scrollbar.map(|s| (s.track, s.thumb)));
         if changed {
             if let Some(w) = &self.window {
