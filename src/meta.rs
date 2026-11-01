@@ -179,7 +179,10 @@ fn read_exif(path: &std::path::Path, limit: u64) -> Option<exif::Exif> {
 /// RAW. Les RAW sont des TIFF (parfois avec une autre signature, comme « IIRO »
 /// pour les ORF) : leur date est lue directement dans les balises, la lecture
 /// EXIF complète refusant ces fichiers tronqués à 64 Ko.
-pub fn capture_day(path: &std::path::Path) -> Option<String> {
+///
+/// Renvoie aussi l'instant, en secondes depuis 1970 comme si l'heure de
+/// l'appareil était en UTC (le fuseau n'est pas connu ici).
+pub fn capture_time(path: &std::path::Path) -> Option<(String, i64)> {
     let mut head = Vec::with_capacity(HEAD as usize);
     std::fs::File::open(path).ok()?.take(HEAD).read_to_end(&mut head).ok()?;
     let text = if head.starts_with(b"II") || head.starts_with(b"MM") {
@@ -193,7 +196,11 @@ pub fn capture_day(path: &std::path::Path) -> Option<String> {
         v.first()?.clone()
     };
     let d = exif::DateTime::from_ascii(&text).ok()?;
-    (d.year > 1990).then(|| format!("{:04}-{:02}-{:02}", d.year, d.month, d.day))
+    let naive = days_from_civil(d.year as i64, d.month as i64, d.day as i64) * 86400
+        + d.hour as i64 * 3600
+        + d.minute as i64 * 60
+        + d.second as i64;
+    (d.year > 1990).then(|| (format!("{:04}-{:02}-{:02}", d.year, d.month, d.day), naive))
 }
 
 /// DateTimeOriginal (IFD EXIF), sinon DateTime (IFD0), d'un en-tête TIFF.
