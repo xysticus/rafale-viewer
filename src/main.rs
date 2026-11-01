@@ -96,6 +96,9 @@ struct App {
     cursor: Option<(f32, f32)>,
     loupe_allowed: bool,
     cursor_hidden: bool,
+    /// Loupe figée : point de la photo (proportions 0..1) où elle reste d'une vue
+    /// à l'autre, au lieu de suivre le pointeur.
+    pin: Option<(f32, f32)>,
 
     /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
     scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
@@ -184,6 +187,7 @@ impl App {
             cursor: None,
             loupe_allowed: false,
             cursor_hidden: false,
+            pin: None,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -703,6 +707,16 @@ impl App {
             },
             Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 12.0 },
             Line {
+                text: if self.pin.is_some() {
+                    "Loupe figée · clic droit pour la libérer".to_string()
+                } else {
+                    String::new()
+                },
+                size: 16.0,
+                color: [90, 160, 255],
+                gap: 3.0,
+            },
+            Line {
                 text: format!("{} / {}", self.cur + 1, self.files.len()),
                 size: 17.0,
                 color: [150, 150, 150],
@@ -1009,6 +1023,13 @@ impl App {
         };
         let (lx, ly) = renderer.list_origin();
         if cx < lx {
+            // Clic sur la photo : la loupe se fige à cet endroit (ou s'y déplace).
+            if let Some(uv) = renderer.image_point((cx, cy)) {
+                self.pin = Some(uv);
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
             return;
         }
         if let Some(h) = self.info_hits.iter().find(|h| h.contains((cx - lx, cy))) {
@@ -1168,10 +1189,14 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
-                let loupe_at = self.cursor.filter(|_| self.loupe_allowed);
                 if let Some(r) = &mut self.renderer {
+                    let loupe_at = match self.pin {
+                        Some(uv) => r.screen_point(uv),
+                        None => self.cursor,
+                    }
+                    .filter(|_| self.loupe_allowed);
                     // Pointeur masqué sous la loupe, pour ne pas cacher le visage.
-                    let hide = r.render(loupe_at);
+                    let hide = r.render(loupe_at, self.pin.is_some());
                     if hide != self.cursor_hidden {
                         self.cursor_hidden = hide;
                         if let Some(w) = &self.window {
@@ -1183,7 +1208,7 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = Some((position.x as f32, position.y as f32));
                 self.drag_scrollbar();
-                if self.loupe_allowed {
+                if self.loupe_allowed && self.pin.is_none() {
                     if let Some(w) = &self.window {
                         w.request_redraw();
                     }
@@ -1201,6 +1226,18 @@ impl ApplicationHandler for App {
                     self.dragging = None;
                 } else if !self.press_scrollbar() {
                     self.click();
+                }
+            }
+            // Clic droit : libère la loupe figée.
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                if self.pin.take().is_some() {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),

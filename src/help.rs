@@ -17,6 +17,9 @@ le défilé ralentit au lieu de sauter des photos.
 résolution arrive en un quart de seconde.
 • À l'arrêt, pose le pointeur sur la photo : une loupe 100 % montre les pixels réels. \
 C'est là qu'on vérifie la netteté, sur un visage par exemple.
+• Un clic sur la photo fige la loupe à cet endroit : elle y reste d'une vue à \
+l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
+Clic droit pour la libérer.
 
 RAFALES ET VUE À PLAT
 
@@ -101,6 +104,8 @@ F ou F11 : plein écran
 SOURIS
 
 Pointeur sur la photo, à l'arrêt : loupe 100 %
+Clic sur la photo : fige la loupe à cet endroit (un autre clic la déplace)
+Clic droit : libère la loupe figée
 Étoiles, couleurs, ✓, ✕ en haut du panneau : marquage de la photo affichée
 (re-clic sur la même étoile ou couleur : l'enlève)
 Mêmes commandes en bas : filtre ; « effacer » supprime le filtre
