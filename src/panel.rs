@@ -125,6 +125,8 @@ pub struct Cell {
     pub index: usize,
     pub rating: u8,
     pub rejected: bool,
+    /// Retenue (✓).
+    pub picked: bool,
     pub color: Option<Color>,
 }
 
@@ -259,6 +261,13 @@ impl Canvas {
         self.shape(x, y, s, s, rgb, 1.0, |px, py| point_in_polygon((px, py), &pts));
     }
 
+    /// Coche verte (photo retenue) dans le carré (x, y, s).
+    fn check(&mut self, x: f32, y: f32, s: f32) {
+        self.rect(x, y, s, s, CHECK_ON, 1.0);
+        let pts = [(x + s * 0.24, y + s * 0.52), (x + s * 0.43, y + s * 0.72), (x + s * 0.78, y + s * 0.3)];
+        self.polyline(&pts, s * 0.12, [255, 255, 255]);
+    }
+
     /// Rangée de commandes à partir de (x, y) ; renvoie les zones cliquables.
     fn controls(&mut self, x: f32, y: f32, c: &Controls) -> Vec<Hit> {
         let mut hits = Vec::with_capacity(12);
@@ -344,6 +353,9 @@ impl Canvas {
             for k in 0..cell.rating {
                 self.star(x + 5.0 + 12.0 * k as f32, y + 5.0, 12.0, STAR_ON);
             }
+        }
+        if cell.picked && !cell.rejected {
+            self.check(x + 3.0, y + 22.0, 16.0);
         }
         if let Some(c) = cell.color {
             self.rect(x + w - 17.0, y + 3.0, 14.0, 14.0, [0, 0, 0], 0.55);
@@ -583,9 +595,9 @@ impl Panel {
                     let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
                     canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
                     if row.marked > 0 {
-                        // Étoile dessinée : la police n'a pas toujours le caractère ★.
+                        // Coche dessinée : nombre de photos retenues dans la rafale.
                         let x = width as f32 - PADDING - 40.0;
-                        canvas.star(x, top + 5.0, 14.0, MARKED);
+                        canvas.check(x, top + 5.0, 14.0);
                         canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
                     }
                     for (k, &index) in row.picks.iter().enumerate() {

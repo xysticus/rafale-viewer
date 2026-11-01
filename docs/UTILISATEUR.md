@@ -92,7 +92,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 - le nom du fichier, puis l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
 - le RAW associé, la position dans le dossier, la rafale, la place dans la rafale et le rythme.
 
-**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ★ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
+**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et « ✓ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
 
 **En bas, la barre de filtre** (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
 
@@ -111,7 +111,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | ↓ | Début de la rafale suivante (vue À plat : rangée suivante) |
 | ↑ | Début de la rafale précédente (vue À plat : rangée précédente) |
 | Début / Fin | Première / dernière photo |
-| Espace | Retenue (2 ★) ↔ non retenue (0 ★) |
+| Espace | Retenue ✓ ↔ non retenue (les étoiles ne changent pas) |
 | 1 à 5 | Nombre d'étoiles (rangée du haut, sans Maj, ou pavé numérique) |
 | 0 | Efface les étoiles |
 | X ou R | Rejetée ↔ non rejetée |
@@ -144,7 +144,13 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 Le marquage est enregistré dans un petit fichier à côté de chaque photo marquée : `PA290123.JPG.xmp`. Les JPEG ne sont jamais modifiés. Si tu enlèves tout le marquage d'une photo (aucune étoile, aucune couleur, pas de rejet), son fichier `.xmp` est supprimé.
 
-**Retenue** veut dire au moins **deux** étoiles et pas rejetée. Une étoile sert de « peut-être » : la photo n'est pas retenue, mais tu peux la retrouver avec le filtre ★ 1. Espace pose deux étoiles, ou les enlève si la photo était retenue ; les touches 1 à 5 règlent la note précisément. Le filtre ✓, la copie sans filtre, le compte « ★ n » des rafales et la case ✓ du panneau suivent cette règle.
+**Les étoiles et la retenue sont deux choses distinctes.**
+
+- **Les étoiles (1 à 5) notent la qualité**, et rien ne les change à ta place : tu peux toujours revoir plus tard toutes tes bonnes photos avec le filtre étoiles.
+- **La retenue (✓, touche Espace ou case ✓) veut dire « je la retouche ».** Dans une rafale où dix photos sont également bonnes, les dix gardent leurs 3 étoiles et une seule reçoit ✓.
+- Le filtre ✓, la copie sans filtre (Ctrl+C), « Retoucher… » et le compte « ✓ n » des rafales ne prennent que les photos cochées. Espace coche ou décoche sans toucher aux étoiles ; rejeter (X) enlève la coche.
+- Les autres logiciels n'ont pas besoin de connaître la coche : « Retoucher… » ne leur donne que les photos cochées, avec leurs étoiles. digiKam l'affiche comme « acceptée ».
+- **Séances triées avant cette version :** leurs photos n'ont aucune coche (les étoiles sont conservées).
 
 ### Les RAW
 

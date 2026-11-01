@@ -43,9 +43,10 @@ marquage. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangé
 
 MARQUER
 
-• Une photo est retenue à partir de 2 étoiles ; 1 étoile veut dire « peut-être ». \
-Espace retient la photo (2 étoiles) ou la remet à zéro, 1 à 5 donnent une note, X ou R la rejette, \
-F1 à F5 posent une couleur. Les commandes en haut du panneau font la même chose \
+• Deux choses distinctes : les étoiles (1 à 5) notent la qualité, durablement ; \
+la coche ✓ (Espace) dit « je la retouche ». Dix photos également bonnes gardent \
+toutes leurs 3 étoiles, et une seule reçoit ✓. Espace coche ou décoche sans \
+toucher aux étoiles, X ou R rejette, F1 à F5 posent une couleur. Les commandes en haut du panneau font la même chose \
 à la souris.
 • Le marquage est écrit dans un petit fichier PHOTO.JPG.xmp à côté de la photo, et \
 à côté du RAW s'il existe (même dossier ou sous-dossier comme raw/). Les photos \
@@ -96,9 +97,10 @@ déjà copiée est sautée, et un XMP déjà présent n'est jamais écrasé.
 MÉTHODE CONSEILLÉE
 
 1. Défile chaque rafale touche maintenue, relâche sur les moments forts, vérifie \
-à la loupe, Espace sur les meilleures.
-2. Filtre sur ✓ et repasse sur les retenues ; affine avec les notes ou les couleurs.
-3. Ouvre les retenues (les RAW de préférence) dans ton logiciel de retouche.
+à la loupe, et note la qualité en étoiles.
+2. Filtre sur les meilleures notes (par exemple ★ 3) : dans chaque rafale, choisis \
+celle à retoucher (N pour la plus nette, loupe AF) et coche-la avec Espace.
+3. « Retoucher… » ou Ctrl+C : seules les photos cochées partent, avec leurs étoiles.
 
 À PROPOS
 
@@ -123,7 +125,7 @@ Début / Fin : première / dernière photo
 
 MARQUAGE
 
-Espace : retenue (2 ★) ↔ non retenue (0 ★) ; retenue = 2 étoiles ou plus
+Espace : retenue ✓ ↔ non retenue (les étoiles ne changent pas)
 1 à 5 : nombre d'étoiles (rangée du haut sans Maj, ou pavé numérique)
 0 : efface les étoiles
 X ou R : rejetée ↔ non rejetée
