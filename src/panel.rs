@@ -51,6 +51,8 @@ pub enum Widget {
     /// Fichiers à copier, et copie de la sélection dans le presse-papiers.
     CopyKind(CopyKind),
     Copy,
+    /// Mettre les photos rejetées à la corbeille.
+    Trash,
 }
 
 /// Fichiers copiés pour chaque photo de la sélection.
@@ -141,6 +143,8 @@ pub struct View {
     /// Libellé du bouton de copie, et compte rendu de la dernière copie.
     pub copy_label: String,
     pub copy_message: String,
+    /// Libellé du bouton de corbeille, s'il y a des photos rejetées.
+    pub trash_label: Option<String>,
 }
 
 /// Emplacement du repère de position sous les photos `start..start + len` : (x, y, largeur).
@@ -296,6 +300,16 @@ impl Canvas {
         }
         hits.push(Hit { widget: Widget::Reject, x, y, w: s, h: s });
         hits
+    }
+
+    /// Bouton d'action destructrice : contour et texte rouges ; renvoie sa largeur.
+    fn danger_button(&mut self, font: &Font, x: f32, y: f32, label: &str) -> f32 {
+        let w = button_width(font, label);
+        for (rx, ry, rw, rh) in [(x, y, w, 1.0), (x, y + BUTTON_H - 1.0, w, 1.0), (x, y, 1.0, BUTTON_H), (x + w - 1.0, y, 1.0, BUTTON_H)] {
+            self.rect(rx, ry, rw, rh, REJECT_ON, 0.8);
+        }
+        self.text(font, x + 10.0, y + 17.0, x + w, label, 15.0, [235, 120, 105]);
+        w
     }
 
     /// Bouton texte ; renvoie sa largeur.
@@ -521,6 +535,14 @@ impl Panel {
                 bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
                 x += w + 6.0;
             }
+        }
+        let mut left = PADDING;
+        if view.flat_available {
+            left = bar_hits.last().map_or(PADDING, |h| h.x + h.w) + 12.0;
+        }
+        if let Some(label) = &view.trash_label {
+            let w = canvas.danger_button(&font, left, by, label);
+            bar_hits.push(Hit { widget: Widget::Trash, x: left, y: by, w, h: BUTTON_H });
         }
         let mut x = width as f32 - PADDING;
         for (label, widget) in [("Raccourcis", Widget::Shortcuts), ("Principes", Widget::Principles)] {
