@@ -89,6 +89,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | X ou R | Rejetée ↔ non rejetée |
 | F1 à F5 | Étiquette rouge, jaune, verte, bleue, violette (un deuxième appui l'enlève) |
 | Ctrl+C | Copie la sélection dans le presse-papiers (voir « Copier la sélection ») |
+| A | Loupe sur la zone AF de chaque vue ↔ loupe sous le pointeur |
 | F ou F11 | Plein écran |
 | Échap ou Q | Quitter |
 
@@ -99,7 +100,9 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 ## Souris
 
 - **Loupe 100 %.** À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
-- **Loupe figée.** Un **clic sur la photo** fige la loupe à cet endroit : elle y reste quand tu passes d'une vue à l'autre avec ← et →, ce qui permet de comparer la netteté du même visage sur toute une rafale sans bouger la souris. Elle est alors bordée de bleu, et le panneau indique « Loupe figée ». Un autre clic la déplace ; un **clic droit** la libère. Elle est aussi libérée dès que tu passes à une autre rafale, dont le cadrage est différent. Comme la loupe normale, elle s'affiche à l'arrêt, une fois la pleine résolution chargée.
+- **Loupe figée.** Un **clic sur la photo** fige la loupe à cet endroit : elle y reste quand tu passes d'une vue à l'autre avec ← et →, ce qui permet de comparer la netteté du même visage sur toute une rafale sans bouger la souris. Elle est alors bordée de bleu, et le panneau indique « Loupe figée ». Un autre clic la déplace ; un **clic droit** la libère. Elle est aussi libérée dès que tu passes à une autre rafale, dont le cadrage est différent.
+- **Zone AF.** Un cadre vert montre sur la photo la zone de mise au point enregistrée par le boîtier (OM System / Olympus). Elle suit le sujet vue après vue, le plus souvent le visage détecté par l'appareil.
+- **Loupe AF (touche A).** La loupe se place d'elle-même sur la zone AF de chaque vue, et suit donc le visage dans toute la rafale, même s'il se déplace dans le cadre. Sa bordure est verte, et le panneau indique « Loupe sur la zone AF ». Une photo sans zone AF retombe sur la loupe sous le pointeur. Un clic sur la photo fige la loupe, ce qui l'emporte sur la loupe AF ; A la coupe. Comme la loupe normale, elle s'affiche à l'arrêt, une fois la pleine résolution chargée.
 - **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X.
 - **Barre de filtre en bas de la liste** (mêmes commandes) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. « effacer » supprime le filtre. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
 - **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre). En vue À plat, un clic sur une vignette affiche cette photo.

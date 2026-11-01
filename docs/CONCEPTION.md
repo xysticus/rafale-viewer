@@ -126,6 +126,8 @@ orientation : u32  EXIF 1 à 8
 
 **Loupe figée** (`App::pin`) : un clic sur la photo retient le point en **proportions de la photo** (0..1, `Renderer::image_point`), pas en pixels écran. À chaque dessin, `screen_point` le reconvertit : la loupe reste sur la même zone d'une vue à l'autre, même si le cadrage à l'écran change (photo portrait). Elle s'affiche aux mêmes conditions (arrêt, pleine résolution), donc ne coûte rien au défilé. Bordure bleue (quad `border_pinned`), pointeur laissé visible, pas de redessin aux mouvements du pointeur. Clic droit : libérée ; libérée aussi au changement de rafale (`pin_burst`), le cadrage n'ayant plus rien à voir.
 
+**Zone AF** (`Meta::af`) : CameraSettings 0x030a de la MakerNote OM, relevée sur OM-1 Mk II : `[640, 480, x, y, l, h, …]`, rectangle dans un repère 640 × 480 du capteur, avant orientation. Elle bouge et change de taille vue par vue (suivi du sujet, détection de visage) ; vérifié en la dessinant sur des photos paysage et portrait. 0x0305 en donne le centre en fractions. `af_display` applique l'orientation EXIF (même correspondance que le shader). Le cadre est dessiné en 4 quads GPU verts (`Renderer::set_af`), pour la photo réellement affichée (`shown`) ; il ne coûte rien au défilé. **Loupe AF** (touche A, `af_loupe`) : la loupe se centre sur la zone AF de la photo affichée ; priorité : loupe figée, puis AF, puis pointeur (`App::loupe_target`). Seule la loupe sous le pointeur masque celui-ci.
+
 ### 5.4 Pièges Wayland rencontrés
 
 - **`set_title` à chaque tour de boucle :** les décorations dessinées côté client par winit sont redessinées à chaque changement de titre, ce qui génère des événements, donc un nouveau tour de boucle. Mesure : 51 000 `set_title` en 1,7 s, puis saturation de la connexion Wayland en plein écran et `ExitFailure(1)`. Règle : **ne jamais appeler `set_title`, `request_redraw`, etc. sans vérifier que quelque chose a changé.** Au repos, on mesure environ 1,5 commit Wayland par seconde.
@@ -229,6 +231,7 @@ Les parties propres au boîtier et au bureau sont peu nombreuses et isolées :
 |---|---|---|
 | Rafales par numéro de vue (MakerNote OM, `DriveMode` 0x0600) | `meta.rs` : `olympus_settings`, `same_burst` | Autre marque : trouver son équivalent (Sony, Canon, Nikon ont leurs propres MakerNotes), ou se contenter du repli sur l'heure de prise de vue (écart > 1 s). Un horodatage aux millisecondes (`SubSecTimeOriginal`) améliorerait ce repli. |
 | Mode image, filtre de bruit (`CameraSettings` 0x2020 : 0x0520, 0x0527) | `meta.rs` : `olympus_settings` | Autre marque : décoder sa MakerNote, ou retirer la ligne du panneau. |
+| Zone AF (`CameraSettings` 0x030a) | `meta.rs` : `olympus_settings` → `Meta::af` | Autre marque : trouver la balise équivalente (Sony, Canon, Nikon enregistrent aussi un point ou une zone AF) ; sans elle, ni cadre ni loupe AF. |
 | Extensions RAW | `raw.rs` : `RAW_EXTENSIONS` | Déjà large (ORF, DNG, CR2/CR3, NEF, ARW, RAF, RW2…). |
 | Copie vers le gestionnaire de fichiers | `main.rs` : `clipboard_files` | `wl-copy --type x-special/gnome-copied-files` vise Nautilus. KDE / Dolphin : type `text/uri-list` ; X11 : `xclip` au lieu de `wl-copy`. |
 | Fenêtres d'aide | `main.rs` : `show_help` | `zenity` ; sous KDE, `kdialog --textbox` ou un affichage dans le panneau. |
