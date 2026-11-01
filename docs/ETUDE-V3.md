@@ -14,7 +14,7 @@ La v3 ajoute donc un **marquage des rafales** (note, retenue, rejet), un **mode 
 - **Entrée** bloque la rafale de la photo affichée ; Entrée à nouveau la débloque.
 - Rafale bloquée :
   - ← → ne défilent qu'à l'intérieur de la rafale et s'arrêtent à ses extrémités ; le défilé continu aussi ;
-  - **↑ ↓ passent à la rafale précédente / suivante en restant bloqué** (proposition : pratique au second passage, pour aller de rafale retenue en rafale retenue avec le filtre) ;
+  - **↑ ↓ passent à la rafale précédente / suivante en restant bloqué** (décidé : au second passage, on enchaîne les rafales retenues sans débloquer et rebloquer) ;
   - Début / Fin vont à la première / dernière vue de la rafale ;
   - la liste des rafales est remplacée par une **grille de vignettes de la rafale**, régulièrement espacées (autant de rangées de 4 que le panneau en contient : 16 vues pour une rafale de 64, toutes si elle est courte), avec le marquage de chaque vue (étoiles, ✓, ✕) et le cadre bleu sur la vue affichée ; un clic va à la vue ;
   - le panneau et le titre indiquent « Rafale 12 bloquée » ;
@@ -92,8 +92,7 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 | 4 | Corbeille d'une rafale bloquée et rejetée |
 | 5 | Aide, guide et conception à jour ; version 3.0.0 |
 
-## 7. Questions ouvertes
+## 7. Points tranchés
 
-- ↑ ↓ en mode bloqué : passer à la rafale voisine en restant bloqué (proposé) ou ne rien faire ?
-- Filtres sur les rafales (n'afficher que les rafales retenues, ou notées X ou plus) : utile au second passage, à ajouter si le filtre des photos ne suffit pas.
-- Faut-il exporter la note de la rafale vers les autres logiciels (par exemple un mot-clé dans les `.xmp` des photos) ? Probablement non : elle sert au tri dans Rafale.
+- Filtres sur les rafales (n'afficher que les rafales retenues, ou notées X ou plus) : utile au second passage, à ajouter seulement si le filtre des photos ne suffit pas (décidé).
+- La note de la rafale n'est pas exportée vers les autres logiciels (décidé) : elle sert au tri dans Rafale.
