@@ -59,6 +59,16 @@ MÉTHODE CONSEILLÉE
 à la loupe, Espace sur les meilleures.
 2. Filtre sur ✓ et repasse sur les retenues ; affine avec les notes ou les couleurs.
 3. Ouvre les retenues (les RAW de préférence) dans ton logiciel de retouche.
+
+À PROPOS
+
+Projet personnel, publié sous licence MIT : https://github.com/xysticus/rafale-viewer
+Il cible les boîtiers OM System / Olympus (rafales, réglages de l'appareil) et le \
+bureau GNOME (copie vers Fichiers). Avec une autre marque ou un autre bureau, \
+l'essentiel fonctionne, mais certaines fonctions sont à adapter.
+Rafale est « vibe codé » : écrit par une IA (Claude Code) sous la direction de \
+son auteur, et testé à l'usage. La façon conseillée de le modifier est la même : \
+demander les changements à un agent de code, en partant de docs/CONCEPTION.md.
 ");
 
 pub const SHORTCUTS_TITLE: &str = "Rafale — raccourcis";

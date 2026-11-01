@@ -1,6 +1,8 @@
 # Rafale — document de conception
 
-Ce document s'adresse à qui reprend le code. Il décrit le but de chaque élément, les choix faits et les mesures qui les justifient. Le besoin d'origine est dans [BRIEF.md](../BRIEF.md), et la façon de se servir du programme dans [UTILISATEUR.md](UTILISATEUR.md).
+Ce document s'adresse à qui reprend le code, humain ou agent de code. Il décrit le but de chaque élément, les choix faits et les mesures qui les justifient. Le besoin d'origine est dans [BRIEF.md](../BRIEF.md), et la façon de se servir du programme dans [UTILISATEUR.md](UTILISATEUR.md).
+
+Le projet est « vibe codé » : écrit par une IA (Claude Code) sous la direction de son auteur, et validé à l'usage. Il cible les boîtiers OM System et GNOME ; la section 11 liste ce qu'il faut adapter pour un autre boîtier ou un autre bureau.
 
 ## 1. Objectif et contraintes
 
@@ -216,3 +218,16 @@ Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vu
 - **Le rythme d'une rafale courte** (moins de 3 secondes distinctes) reste inconnu.
 - **Pas de décodage parallèle d'une même image.** Les JPEG OM ont des marqueurs de redémarrage tous les 4 MCU, ce qui permettrait de répartir le décodage Huffman d'une image sur plusieurs cœurs. C'est la piste pour réduire la latence d'une image jamais lue (aujourd'hui ~100-140 ms de décodage).
 - **Pistes ouvertes :** loupe redimensionnable à la molette, défilé limité aux photos retenues, intégration au menu GNOME.
+
+## 11. Adapter Rafale
+
+Les parties propres au boîtier et au bureau sont peu nombreuses et isolées :
+
+| Dépendance | Où | À faire pour un autre cas |
+|---|---|---|
+| Rafales par numéro de vue (MakerNote OM, `DriveMode` 0x0600) | `meta.rs` : `olympus_settings`, `same_burst` | Autre marque : trouver son équivalent (Sony, Canon, Nikon ont leurs propres MakerNotes), ou se contenter du repli sur l'heure de prise de vue (écart > 1 s). Un horodatage aux millisecondes (`SubSecTimeOriginal`) améliorerait ce repli. |
+| Mode image, filtre de bruit (`CameraSettings` 0x2020 : 0x0520, 0x0527) | `meta.rs` : `olympus_settings` | Autre marque : décoder sa MakerNote, ou retirer la ligne du panneau. |
+| Extensions RAW | `raw.rs` : `RAW_EXTENSIONS` | Déjà large (ORF, DNG, CR2/CR3, NEF, ARW, RAF, RW2…). |
+| Copie vers le gestionnaire de fichiers | `main.rs` : `clipboard_files` | `wl-copy --type x-special/gnome-copied-files` vise Nautilus. KDE / Dolphin : type `text/uri-list` ; X11 : `xclip` au lieu de `wl-copy`. |
+| Fenêtres d'aide | `main.rs` : `show_help` | `zenity` ; sous KDE, `kdialog --textbox` ou un affichage dans le panneau. |
+| Police du panneau | `panel.rs` : `system_font` | `fc-match sans-serif`, présent sur la plupart des distributions. |
