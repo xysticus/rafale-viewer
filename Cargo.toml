@@ -2,6 +2,9 @@
 name = "rafale-viewer"
 version = "2.0.0-dev"
 edition = "2024"
+license = "MIT"
+description = "Visionneur pour trier vite de longues rafales de JPEG"
+repository = "https://github.com/xysticus/rafale-viewer"
 
 [dependencies]
 bytemuck = "1.25.2"
