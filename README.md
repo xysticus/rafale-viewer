@@ -36,6 +36,7 @@ cargo build --release
 
 - [Guide d'utilisation](docs/UTILISATEUR.md)
 - [Document de conception](docs/CONCEPTION.md)
+- [Étude des évolutions de la v2](docs/ETUDE-V2.md)
 
 ## Licence
 

@@ -91,6 +91,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | Ctrl+C | Copie la sélection dans le presse-papiers (voir « Copier la sélection ») |
 | A | Loupe sur la zone AF de chaque vue ↔ loupe sous le pointeur |
 | N | Vue la plus nette de la rafale (voir « Netteté AF ») |
+| C | Affiche ↔ masque le cadre vert de la zone AF |
 | F ou F11 | Plein écran |
 | Échap ou Q | Quitter |
 
@@ -102,7 +103,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 - **Loupe 100 %.** À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
 - **Loupe figée.** Un **clic sur la photo** fige la loupe à cet endroit : elle y reste quand tu passes d'une vue à l'autre avec ← et →, ce qui permet de comparer la netteté du même visage sur toute une rafale sans bouger la souris. Elle est alors bordée de bleu, et le panneau indique « Loupe figée ». Un autre clic la déplace ; un **clic droit** la libère. Elle est aussi libérée dès que tu passes à une autre rafale, dont le cadrage est différent.
-- **Zone AF.** Un cadre vert montre sur la photo la zone de mise au point enregistrée par le boîtier (OM System / Olympus). Elle suit le sujet vue après vue, le plus souvent le visage détecté par l'appareil.
+- **Zone AF.** Un cadre vert montre sur la photo la zone de mise au point enregistrée par le boîtier (OM System / Olympus). Elle suit le sujet vue après vue, le plus souvent le visage détecté par l'appareil. La touche **C** l'affiche ou la masque (affichée au lancement) ; la loupe AF fonctionne dans les deux cas.
 - **Loupe AF (touche A).** La loupe se place d'elle-même sur la zone AF de chaque vue, et suit donc le visage dans toute la rafale, même s'il se déplace dans le cadre. Sa bordure est verte, et le panneau indique « Loupe sur la zone AF ». Une photo sans zone AF retombe sur la loupe sous le pointeur. Un clic sur la photo fige la loupe, ce qui l'emporte sur la loupe AF ; A la coupe.
 - **Netteté AF.** À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue de la rafale, en commençant par la photo affichée puis ses voisines. Le panneau affiche « Netteté AF : 87 % de la plus nette · rang 4 / 54 », en vert pour la plus nette, avec « (mesure 30 / 54) » tant que toute la rafale n'est pas mesurée. **N** va à la vue la plus nette (parmi celles qui passent le filtre). La mesure ne ralentit pas le défilé : elle s'interrompt dès que tu reprends. Deux limites : l'indice ne compare que les vues d'une même rafale (rien pour une vue isolée), et il mesure ce qui est dans la zone AF : si l'AF a visé le col plutôt que le visage, l'indice baisse aussi. Regarde alors le cadre vert. Comme la loupe normale, elle s'affiche à l'arrêt, une fois la pleine résolution chargée.
 - **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X.

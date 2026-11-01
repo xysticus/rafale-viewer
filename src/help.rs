@@ -21,7 +21,8 @@ C'est là qu'on vérifie la netteté, sur un visage par exemple.
 l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
 Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
 • Le cadre vert sur la photo est la zone de mise au point enregistrée par le \
-boîtier (OM System) : elle suit le sujet, souvent le visage détecté. La touche A \
+boîtier (OM System) : elle suit le sujet, souvent le visage détecté. C l'affiche \
+ou le masque. La touche A \
 place la loupe sur cette zone, vue après vue : elle suit le visage dans toute la \
 rafale, même s'il se déplace dans le cadre.
 • À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue \
@@ -108,6 +109,7 @@ Ctrl+C : copie la sélection (filtrées, sinon retenues) ; Ctrl+V dans Fichiers
 LOUPE
 
 A : loupe sur la zone AF (cadre vert) ↔ loupe sous le pointeur
+C : affiche ↔ masque le cadre vert de la zone AF
 N : vue la plus nette de la rafale (netteté de la zone AF)
 
 FENÊTRE
