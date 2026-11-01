@@ -2,6 +2,8 @@
 
 Rafale est un visionneur fait pour trier des rafales de JPEG. Tu maintiens une flèche et les photos défilent en continu, sans en sauter aucune. Tu relâches, et la photo s'affiche en pleine résolution, avec une loupe 100 % pour vérifier la netteté. Les photos que tu retiens sont marquées dans des fichiers XMP, que les logiciels de retouche savent lire.
 
+Rafale est conçu pour les boîtiers **OM System / Olympus** et le bureau **GNOME**. Avec une autre marque ou un autre bureau, l'essentiel fonctionne, mais la détection des rafales, les réglages de l'appareil et la copie vers le gestionnaire de fichiers sont à adapter : voir le [README](../README.md).
+
 ## Installation
 
 Il faut Rust (`cargo`), ainsi que `cmake` et `nasm` pour compiler libjpeg-turbo :
