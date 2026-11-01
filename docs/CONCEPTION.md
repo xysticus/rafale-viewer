@@ -183,7 +183,7 @@ Le fichier `PHOTO.JPG.xmp` est placé à côté de la photo. C'est le nommage de
 
 Règles :
 
-- **Retenue ⇔ au moins une étoile et pas rejetée.** Espace bascule entre 0 et 1 étoile.
+- **Retenue ⇔ au moins `RETAINED_MIN` (2) étoiles et pas rejetée.** Une étoile = « peut-être ». Espace et la case ✓ (`Mark::toggle_retained`) basculent entre 0 et 2 étoiles. Tout passe par `Mark::retained()` : filtre ✓, sélection copiée sans filtre, compte « ★ n » des rafales, case ✓, `digiKam:PickLabel` (3 = acceptée).
 - Un marquage vide **supprime** notre XMP. L'écriture est atomique (fichier `.tmp`, puis renommage).
 - **Un XMP sans notre signature est en lecture seule** (`Mark::foreign`) s'il contient quelque chose. C'est le cas, par exemple, du sidecar de darktable, qui contient l'historique des retouches.
 - **Exception : un XMP étranger vierge** (`blank`) est remplacé dès qu'on marque la photo, jamais supprimé. Vierge veut dire : pas de note, de couleur, d'élément ou de rejet ; un historique darktable vide (`history_end="0"`, pas de `rdf:li`) ; uniquement les mots-clés automatiques `darktable|…` ; ni `crs:` (Lightroom), ni `digiKam:ImageHistory`, ni titre, description ou droits. Tout ce qui n'est pas reconnu compte comme du contenu. Raison : darktable pose un tel fichier pour chaque photo à l'import, ce qui bloquait le tri de toute la séance.
@@ -215,6 +215,7 @@ Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vu
 - **Flèches, chiffres, F1-F5, F11, Espace** : lus par position **physique**. La rangée des chiffres marche donc sans Maj en AZERTY.
 - **Clic dans la liste :** test sur les zones `list_hits` (`Widget::Photo`) renvoyées par le rendu de la liste, relatives à `list_origin()` : ligne entière en vue rafales, vignette en vue à plat. Les commandes du bas (`bar_hits`) regroupent filtre, vue et aide.
 - **Copie de la sélection** (Ctrl+C, bouton) : sélection = `visible` si un filtre est actif, sinon les retenues ; JPEG, RAW ou les deux (`CopyKind`). Les chemins sont passés à `wl-copy --type x-special/gnome-copied-files` (« copy » puis une URI `file://` encodée par ligne), le format que Nautilus lit au collage. wl-copy reste en arrière-plan pour servir le contenu, donc le presse-papiers survit à Rafale. Abandon de l'ancienne copie dans `retenus/` : l'utilisateur choisit la destination dans Fichiers.
+- **Ctrl+X (caché)** : comme Ctrl+C, mais seulement les `.xmp` existants de la sélection (JPEG, RAW ou les deux), toujours en « copy ». Sert à essayer un logiciel qui écrit ses propres XMP sur une copie des photos, sans toucher au dossier trié.
 - **↑ / ↓** : rafale précédente / suivante, ou rangée de 4 photos visibles en vue à plat.
 - **Aide :** « Principes » et « Raccourcis » ouvrent `zenity --text-info` (texte sélectionnable, envoyé sur l'entrée standard). Tant que le processus vit (`try_wait`), la fenêtre principale ignore clavier, clics et molette : modalité simulée, Wayland ne permettant pas de rattacher la fenêtre zenity à la nôtre.
 - **Ascenseur :** l'appui (avec une tolérance de 8 px de chaque côté) démarre un glissement. La position du curseur est convertie en décalage de lignes (`list_offset`), et ce décalage est remis à zéro quand la ligne courante (rafale ou rangée) change.

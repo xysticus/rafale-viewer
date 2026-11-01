@@ -42,7 +42,8 @@ marquage. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangé
 
 MARQUER
 
-• Espace retient la photo (1 étoile), 1 à 5 donnent une note, X ou R la rejette, \
+• Une photo est retenue à partir de 2 étoiles ; 1 étoile veut dire « peut-être ». \
+Espace retient la photo (2 étoiles) ou la remet à zéro, 1 à 5 donnent une note, X ou R la rejette, \
 F1 à F5 posent une couleur. Les commandes en haut du panneau font la même chose \
 à la souris.
 • Le marquage est écrit dans un petit fichier PHOTO.JPG.xmp à côté de la photo, et \
@@ -96,7 +97,7 @@ Début / Fin : première / dernière photo
 
 MARQUAGE
 
-Espace : retenue (1 ★) ↔ non retenue
+Espace : retenue (2 ★) ↔ non retenue (0 ★) ; retenue = 2 étoiles ou plus
 1 à 5 : nombre d'étoiles (rangée du haut sans Maj, ou pavé numérique)
 0 : efface les étoiles
 X ou R : rejetée ↔ non rejetée

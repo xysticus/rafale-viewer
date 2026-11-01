@@ -11,6 +11,10 @@
 
 use std::path::{Path, PathBuf};
 
+/// Note minimale d'une photo retenue. À 2, une étoile reste disponible pour
+/// « peut-être » : plus de souplesse dans le tri.
+pub const RETAINED_MIN: u8 = 2;
+
 /// Signature de nos fichiers : seuls ceux-là sont réécrits ou supprimés.
 const CREATOR: &str = "rafale-viewer";
 
@@ -81,9 +85,15 @@ pub struct Mark {
 }
 
 impl Mark {
-    /// Retenue = au moins une étoile et pas rejetée.
+    /// Retenue = au moins `RETAINED_MIN` étoiles et pas rejetée.
     pub fn retained(&self) -> bool {
-        !self.rejected && self.rating > 0
+        !self.rejected && self.rating >= RETAINED_MIN
+    }
+
+    /// Espace, case ✓ : retenue (`RETAINED_MIN` étoiles) ↔ non retenue (aucune étoile).
+    pub fn toggle_retained(&mut self) {
+        self.rating = if self.retained() { 0 } else { RETAINED_MIN };
+        self.rejected = false;
     }
 
     fn is_empty(&self) -> bool {
@@ -328,6 +338,14 @@ mod tests {
         assert!(couleurs.matches(&rouge3), "plusieurs couleurs : l'une ou l'autre");
         let tri = Filter { retained: true, rejected: true, ..Default::default() };
         assert!(tri.matches(&rouge3) && tri.matches(&rejetee) && !tri.matches(&rien));
+        // Une étoile : « peut-être », pas encore retenue.
+        let une = Mark { rating: 1, ..Default::default() };
+        assert!(!une.retained() && !tri.matches(&une));
+        let mut m = une;
+        m.toggle_retained();
+        assert_eq!((m.rating, m.retained()), (RETAINED_MIN, true));
+        m.toggle_retained();
+        assert_eq!(m.rating, 0);
     }
 
     #[test]
