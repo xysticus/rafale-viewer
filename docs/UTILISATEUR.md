@@ -22,6 +22,7 @@ rafale-viewer <dossier> [--fps N]
 
 - `<dossier>` : le dossier qui contient les JPEG. Seuls les fichiers `.jpg` et `.jpeg` sont pris, dans l'ordre alphabétique de leur nom.
 - `--fps N` : cadence du défilé quand une flèche est maintenue. Elle vaut 25 images/s par défaut.
+- `--version` : affiche la version. Elle figure aussi en tête de la fenêtre « Principes ».
 
 Exemple :
 

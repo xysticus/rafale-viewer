@@ -1,8 +1,10 @@
 //! Textes des fenêtres d'aide, affichés par zenity (texte sélectionnable).
 
-pub const PRINCIPLES_TITLE: &str = "Rafale — principes";
+pub const PRINCIPLES_TITLE: &str = concat!("Rafale ", env!("CARGO_PKG_VERSION"), " — principes");
 
-pub const PRINCIPLES: &str = "\
+pub const PRINCIPLES: &str = concat!("\
+RAFALE — version ", env!("CARGO_PKG_VERSION"), "
+
 Rafale sert à trier vite une séance de JPEG, y compris de très longues rafales \
 (25 images/s ou plus).
 
@@ -57,7 +59,7 @@ MÉTHODE CONSEILLÉE
 à la loupe, Espace sur les meilleures.
 2. Filtre sur ✓ et repasse sur les retenues ; affine avec les notes ou les couleurs.
 3. Ouvre les retenues (les RAW de préférence) dans ton logiciel de retouche.
-";
+");
 
 pub const SHORTCUTS_TITLE: &str = "Rafale — raccourcis";
 
