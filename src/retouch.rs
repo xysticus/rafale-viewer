@@ -1,5 +1,7 @@
 //! « Retoucher… » : la sélection (JPEG, RAW ou les deux, avec leurs XMP) est
-//! copiée dans un dossier voisin de la séance (`<séance>-retouche/`), puis le
+//! copiée dans un dossier voisin de la séance, suffixé du nom du logiciel
+//! (`<séance>-rawtherapee/`, `<séance>-darktable/`… ; `<séance>-retouche/` pour
+//! Fichiers), pour essayer chaque logiciel sur sa propre copie, puis le
 //! logiciel de retouche choisi est lancé sur ce dossier. Il ne voit que les
 //! photos choisies et écrit ses fichiers dans la copie : la séance triée et les
 //! originaux restent intacts.
@@ -7,16 +9,16 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Logiciels proposés, s'ils sont installés : (identifiant du .desktop, nom).
-/// Tous acceptent un dossier en argument.
-const EDITORS: &[(&str, &str)] = &[
-    ("com.rawtherapee.RawTherapee", "RawTherapee"),
-    ("org.darktable.darktable", "darktable (importe le dossier dans sa bibliothèque)"),
-    ("us.pixls.art.ART", "ART"),
-    ("org.kde.digikam-showfoto", "Showfoto (éditeur de digiKam)"),
-    ("com.xnview.XnViewMP", "XnView MP"),
-    ("org.gnome.gThumb", "gThumb (attention : enregistre par-dessus l'original)"),
-    ("org.gnome.Nautilus", "Fichiers (ouvrir le dossier seulement)"),
+/// Logiciels proposés, s'ils sont installés : (identifiant du .desktop, nom,
+/// suffixe du dossier de copie). Tous acceptent un dossier en argument.
+const EDITORS: &[(&str, &str, &str)] = &[
+    ("com.rawtherapee.RawTherapee", "RawTherapee", "rawtherapee"),
+    ("org.darktable.darktable", "darktable (importe le dossier dans sa bibliothèque)", "darktable"),
+    ("us.pixls.art.ART", "ART", "art"),
+    ("org.kde.digikam-showfoto", "Showfoto (éditeur de digiKam)", "showfoto"),
+    ("com.xnview.XnViewMP", "XnView MP", "xnview"),
+    ("org.gnome.gThumb", "gThumb (attention : enregistre par-dessus l'original)", "gthumb"),
+    ("org.gnome.Nautilus", "Fichiers (ouvrir le dossier seulement)", "retouche"),
 ];
 
 /// Logiciels installés, d'après les dossiers d'applications (Flatpak compris).
@@ -31,13 +33,13 @@ pub fn installed_editors() -> Vec<(&'static str, &'static str)> {
     }
     EDITORS
         .iter()
-        .copied()
-        .filter(|(id, _)| dirs.iter().any(|d| d.join("applications").join(format!("{id}.desktop")).is_file()))
+        .filter(|(id, _, _)| dirs.iter().any(|d| d.join("applications").join(format!("{id}.desktop")).is_file()))
+        .map(|&(id, name, _)| (id, name))
         .collect()
 }
 
 pub fn editor_name(id: &str) -> &str {
-    EDITORS.iter().find(|(i, _)| *i == id).map_or(id, |(_, n)| n.split(" (").next().unwrap_or(n))
+    EDITORS.iter().find(|(i, _, _)| *i == id).map_or(id, |(_, n, _)| n.split(" (").next().unwrap_or(n))
 }
 
 fn config_file() -> Option<PathBuf> {
@@ -73,12 +75,14 @@ pub fn chooser() -> Command {
     cmd
 }
 
-/// Dossier de retouche, à côté de la séance : `2026-10-29` → `2026-10-29-retouche`.
-/// Pas un sous-dossier : Rafale y chercherait des RAW.
-pub fn destination(session: &Path) -> PathBuf {
+/// Dossier de copie, à côté de la séance et propre au logiciel : `2026-10-29` →
+/// `2026-10-29-rawtherapee` (`-retouche` pour Fichiers). Pas un sous-dossier :
+/// Rafale y chercherait des RAW.
+pub fn destination(session: &Path, editor: &str) -> PathBuf {
     let session = std::fs::canonicalize(session).unwrap_or_else(|_| session.to_path_buf());
     let name = session.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "seance".into());
-    session.with_file_name(format!("{name}-retouche"))
+    let suffix = EDITORS.iter().find(|(i, _, _)| *i == editor).map_or("retouche", |(_, _, s)| s);
+    session.with_file_name(format!("{name}-{suffix}"))
 }
 
 /// Ce qu'a fait la copie.
@@ -147,8 +151,11 @@ mod tests {
         std::fs::write(&raw, b"raw").unwrap();
         std::fs::write(crate::marks::sidecar(&raw), b"marquage Rafale").unwrap();
 
-        let dest = destination(&session);
-        assert_eq!(dest, base.canonicalize().unwrap().join("2026-10-29-retouche"));
+        let base = base.canonicalize().unwrap();
+        assert_eq!(destination(&session, "org.gnome.Nautilus"), base.join("2026-10-29-retouche"));
+        assert_eq!(destination(&session, "org.darktable.darktable"), base.join("2026-10-29-darktable"));
+        let dest = destination(&session, "com.rawtherapee.RawTherapee");
+        assert_eq!(dest, base.join("2026-10-29-rawtherapee"));
         let photos = [jpeg, raw];
         assert_eq!(copy(&photos, &dest).unwrap(), Copied { photos: 2, already: 0, sidecars: 1 });
         assert!(dest.join("P1.JPG").is_file() && dest.join("P1.ORF").is_file());

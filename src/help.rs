@@ -86,8 +86,9 @@ choisies, sans dépendre de sa façon de lire notes et étiquettes.
 RETOUCHER
 
 • « Retoucher… » copie la même sélection que Ctrl+C (JPEG, RAW ou les deux, avec \
-leurs XMP) dans un dossier voisin de la séance, par exemple 2026-10-29-retouche, \
-puis y lance le logiciel de retouche. Il ne voit que les photos choisies, et ses \
+leurs XMP) dans un dossier voisin de la séance, propre au logiciel choisi, par \
+exemple 2026-10-29-rawtherapee (2026-10-29-retouche pour Fichiers), puis y lance \
+le logiciel. Chaque logiciel a ainsi sa copie, pour les essayer séparément. Il ne voit que les photos choisies, et ses \
 fichiers restent dans la copie : la séance triée n'est pas touchée. Le logiciel \
 est demandé au premier usage, puis retenu ; Maj+clic pour en changer. Une photo \
 déjà copiée est sautée, et un XMP déjà présent n'est jamais écrasé.

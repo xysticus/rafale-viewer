@@ -577,7 +577,7 @@ impl App {
             self.copy_message = "sélection vide".into();
             return;
         }
-        let dest = retouch::destination(&self.dir);
+        let dest = retouch::destination(&self.dir, editor);
         let folder = dest.file_name().unwrap_or_default().to_string_lossy().into_owned();
         self.copy_message = match retouch::copy(&photos, &dest).and_then(|c| retouch::launch(editor, &dest).map(|()| c)) {
             Ok(c) => {

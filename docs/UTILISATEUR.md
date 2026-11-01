@@ -182,7 +182,7 @@ Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copié
 
 Le bouton **« Retoucher… »**, à côté de « Copier », prépare la retouche en une seule action :
 
-1. il copie la même sélection que Ctrl+C (les photos filtrées si un filtre est actif, sinon les retenues), en JPEG, RAW ou les deux selon le choix en bas, **avec leurs `.xmp`** (notes et couleurs), dans un dossier **voisin** de la séance : `~/Images/2026-10-29-retouche/` ;
+1. il copie la même sélection que Ctrl+C (les photos filtrées si un filtre est actif, sinon les retenues), en JPEG, RAW ou les deux selon le choix en bas, **avec leurs `.xmp`** (notes et couleurs), dans un dossier **voisin** de la séance, **propre au logiciel** : `~/Images/2026-10-29-rawtherapee/`, `2026-10-29-darktable/`… (`2026-10-29-retouche/` pour Fichiers). Chaque logiciel a ainsi sa propre copie, pour les essayer séparément sans qu'ils se mélangent ;
 2. il lance le logiciel de retouche sur ce dossier.
 
 Le logiciel ne voit que les photos choisies, et il écrit ses propres fichiers (`.pp3`, `.xmp` de darktable…) dans la copie : la séance triée et les originaux ne sont jamais touchés.
