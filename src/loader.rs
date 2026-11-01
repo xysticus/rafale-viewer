@@ -29,6 +29,9 @@ const RAW_CACHE: usize = 40;
 pub enum Quality {
     Reduced,
     Full,
+    /// Indice de netteté sur la zone AF, en dix-millièmes de l'image (x, y, l, h) :
+    /// décodage en niveaux de gris, seul le nombre est renvoyé.
+    Sharpness([u16; 4]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,7 +68,9 @@ impl Decoded {
 
 pub struct Done {
     pub job: Job,
-    pub image: Arc<Decoded>,
+    /// Image décodée (Reduced, Full), ou indice de netteté (Sharpness).
+    pub image: Option<Arc<Decoded>>,
+    pub score: Option<f32>,
 }
 
 type Raw = Result<Arc<Vec<u8>>, Arc<std::io::Error>>;
@@ -216,31 +221,35 @@ fn decoder(shared: &Shared, tx: &Sender<Done>, proxy: &EventLoopProxy<()>) {
         };
 
         let t0 = std::time::Instant::now();
-        let image = match raw
-            .map_err(|e| e.to_string().into())
-            .and_then(|data| decode(&mut dec, &data, job.quality))
-        {
-            Ok(img) => img,
-            Err(e) => {
-                log::warn!("image #{}: {e}", job.index);
-                Decoded::placeholder()
-            }
+        let done = if let Quality::Sharpness(af) = job.quality {
+            let score = raw.ok().and_then(|data| sharpness(&mut dec, &data, af));
+            log::debug!("netteté #{} : {score:?} en {:.1} ms", job.index, t0.elapsed().as_secs_f64() * 1000.0);
+            Done { job, image: None, score }
+        } else {
+            let image = match raw
+                .map_err(|e| e.to_string().into())
+                .and_then(|data| decode(&mut dec, &data, job.quality))
+            {
+                Ok(img) => img,
+                Err(e) => {
+                    log::warn!("image #{}: {e}", job.index);
+                    Decoded::placeholder()
+                }
+            };
+            log::debug!(
+                "{:?} #{} {}x{} en {:.1} ms",
+                job.quality,
+                job.index,
+                image.width,
+                image.height,
+                t0.elapsed().as_secs_f64() * 1000.0
+            );
+            Done { job, image: Some(Arc::new(image)), score: None }
         };
-        log::debug!(
-            "{:?} #{} {}x{} en {:.1} ms",
-            job.quality,
-            job.index,
-            image.width,
-            image.height,
-            t0.elapsed().as_secs_f64() * 1000.0
-        );
 
         // Le résultat part avant le retrait de `in_flight` : le thread principal
         // ne peut donc pas redemander une image déjà décodée mais pas encore reçue.
-        let _ = tx.send(Done {
-            job,
-            image: Arc::new(image),
-        });
+        let _ = tx.send(done);
         shared.state.lock().unwrap().in_flight.remove(&job);
         let _ = proxy.send_event(());
     }
@@ -254,7 +263,7 @@ fn decode(
     let header = dec.read_header(data)?;
     let factor = match quality {
         Quality::Reduced => ScalingFactor::new(REDUCED_SCALE.0, REDUCED_SCALE.1),
-        Quality::Full => ScalingFactor::new(1, 1),
+        _ => ScalingFactor::new(1, 1),
     };
     dec.set_scaling_factor(factor)?;
     let scaled = header.scaled(factor);
@@ -274,6 +283,22 @@ fn decode(
         full_height: header.height as u32,
         orientation: exif_orientation(data),
     })
+}
+
+/// Décode la luminance pleine résolution et mesure la netteté sur la zone AF.
+fn sharpness(dec: &mut Decompressor, data: &[u8], af: [u16; 4]) -> Option<f32> {
+    let header = dec.read_header(data).ok()?;
+    dec.set_scaling_factor(ScalingFactor::new(1, 1)).ok()?;
+    let mut image = Image {
+        pixels: vec![0u8; header.width * header.height],
+        width: header.width,
+        pitch: header.width,
+        height: header.height,
+        format: PixelFormat::GRAY,
+    };
+    dec.decompress(data, image.as_deref_mut()).ok()?;
+    let af = af.map(|v| v as f32 / 10_000.0);
+    crate::sharp::score(&image.pixels, header.width, header.height, af)
 }
 
 fn exif_orientation(data: &[u8]) -> u8 {

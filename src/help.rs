@@ -24,6 +24,11 @@ Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
 boîtier (OM System) : elle suit le sujet, souvent le visage détecté. La touche A \
 place la loupe sur cette zone, vue après vue : elle suit le visage dans toute la \
 rafale, même s'il se déplace dans le cadre.
+• À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue \
+de la rafale, et affiche celle de la photo : « 87 % de la plus nette · rang 4 / 54 ». \
+N va à la vue la plus nette. L'indice mesure ce qui est dans la zone AF : si \
+l'AF a visé le col au lieu du visage, il baisse aussi. La mesure ne ralentit \
+jamais le défilé : elle s'interrompt dès qu'il reprend.
 
 RAFALES ET VUE À PLAT
 
@@ -103,6 +108,7 @@ Ctrl+C : copie la sélection (filtrées, sinon retenues) ; Ctrl+V dans Fichiers
 LOUPE
 
 A : loupe sur la zone AF (cadre vert) ↔ loupe sous le pointeur
+N : vue la plus nette de la rafale (netteté de la zone AF)
 
 FENÊTRE
 
