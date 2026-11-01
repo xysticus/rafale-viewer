@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crossbeam_channel::Sender;
-use winit::event_loop::EventLoopProxy;
+use crate::loader::Waker;
 
 /// Assez pour le segment APP1 (EXIF + vignette) des boîtiers OM System.
 const HEAD: u64 = 64 * 1024;
@@ -69,7 +69,7 @@ pub fn same_burst(prev: &Meta, next: &Meta) -> bool {
     }
 }
 
-pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, proxy: EventLoopProxy<()>) {
+pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, wake: Waker) {
     std::thread::Builder::new()
         .name("scan".into())
         .spawn(move || {
@@ -93,10 +93,10 @@ pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, proxy: EventLo
                     return;
                 }
                 if i % WAKE_EVERY == WAKE_EVERY - 1 {
-                    let _ = proxy.send_event(());
+                    wake();
                 }
             }
-            let _ = proxy.send_event(());
+            wake();
             log::info!(
                 "{} en-têtes analysés en {:.0} ms",
                 files.len(),
