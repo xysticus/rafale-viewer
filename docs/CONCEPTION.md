@@ -38,6 +38,7 @@ Les threads réveillent la boucle winit par `EventLoopProxy::send_event(())`. Le
 | `panel.rs` | rendu CPU du panneau (texte fontdue, vignettes) |
 | `marks.rs` | lecture et écriture des XMP |
 | `raw.rs` | association de chaque JPEG à son RAW |
+| `help.rs` | textes des fenêtres d'aide (principes, raccourcis) |
 | `examples/bench.rs` | banc de mesure lecture disque / décodage |
 
 ## 3. Défilé
@@ -132,6 +133,7 @@ Le panneau est rastérisé sur le CPU (`fontdue`, police trouvée par `fc-match 
 
 - **Informations :** recomposées seulement si leur texte change, une fois par image et en moins d'une milliseconde. La clé de comparaison est le texte plus la largeur.
 - **Liste des rafales :** recomposée seulement si la rafale courante, la fenêtre de lignes, les comptes de photos retenues ou la largeur changent. Cela prend quelques millisecondes et environ 2,7 Mo de texture.
+- **Vue à plat** (dossiers de moins de 300 photos, `FLAT_MAX`) : la liste devient une grille de rangées de 4 vignettes (`Entry::Photos`), une par photo visible, avec son marquage dessiné dessus (étoiles ou rejet, pastille de couleur). Elle n'est recomposée qu'au changement de rangée courante ou de marquage : la photo courante est soulignée par le même quad GPU que le repère des rafales. Le rendu renvoie pour cela une liste de `Track` (photos `start..start+len` sous lesquelles placer le repère) : une par rafale, une par vignette.
 - **Repère de position et ascenseur :** ce sont des quads GPU séparés (textures 1 × 1), qui bougent à chaque image sans recomposer la liste.
 - **Vignettes :** ce sont les miniatures EXIF intégrées (160 × 120, ~9 Ko). Elles sont gardées compressées dans `Meta`, puis décodées, orientées et redimensionnées (bilinéaire) à la demande, dans un LRU de 512 entrées.
 
@@ -201,8 +203,10 @@ Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vu
 
 - **Lettres** (`f`, `q`, `x`, `r`) : lues par touche **logique**, pour fonctionner en AZERTY.
 - **Flèches, chiffres, F1-F5, F11, Espace** : lus par position **physique**. La rangée des chiffres marche donc sans Maj en AZERTY.
-- **Clic dans la liste :** test sur les zones `list_hits` renvoyées par le rendu de la liste, relatives à `list_origin()`.
-- **Ascenseur :** l'appui (avec une tolérance de 8 px de chaque côté) démarre un glissement. La position du curseur est convertie en décalage de lignes (`list_offset`), et ce décalage est remis à zéro quand la rafale courante change.
+- **Clic dans la liste :** test sur les zones `list_hits` (`Widget::Photo`) renvoyées par le rendu de la liste, relatives à `list_origin()` : ligne entière en vue rafales, vignette en vue à plat. Les commandes du bas (`bar_hits`) regroupent filtre, vue et aide.
+- **↑ / ↓** : rafale précédente / suivante, ou rangée de 4 photos visibles en vue à plat.
+- **Aide :** « Principes » et « Raccourcis » ouvrent `zenity --text-info` (texte sélectionnable, envoyé sur l'entrée standard). Tant que le processus vit (`try_wait`), la fenêtre principale ignore clavier, clics et molette : modalité simulée, Wayland ne permettant pas de rattacher la fenêtre zenity à la nôtre.
+- **Ascenseur :** l'appui (avec une tolérance de 8 px de chaque côté) démarre un glissement. La position du curseur est convertie en décalage de lignes (`list_offset`), et ce décalage est remis à zéro quand la ligne courante (rafale ou rangée) change.
 
 ## 10. Limites connues et pistes
 
@@ -210,4 +214,4 @@ Sur la séance de test : 2353 RAW trouvés dans `raw/`, pour 2355 JPEG. Les 2 vu
 - **Image affichée en 8 bits sRGB**, sans gestion des profils ICC ni du HDR.
 - **Le rythme d'une rafale courte** (moins de 3 secondes distinctes) reste inconnu.
 - **Pas de décodage parallèle d'une même image.** Les JPEG OM ont des marqueurs de redémarrage tous les 4 MCU, ce qui permettrait de répartir le décodage Huffman d'une image sur plusieurs cœurs. C'est la piste pour réduire la latence d'une image jamais lue (aujourd'hui ~100-140 ms de décodage).
-- **Pistes ouvertes :** loupe redimensionnable à la molette, défilé limité aux photos retenues, repères de marquage sur les vignettes, intégration au menu GNOME.
+- **Pistes ouvertes :** loupe redimensionnable à la molette, défilé limité aux photos retenues, intégration au menu GNOME.
