@@ -108,6 +108,8 @@ struct App {
     pin_burst: Option<usize>,
     /// Loupe AF (touche A) : la loupe se place sur la zone AF de chaque vue.
     af_loupe: bool,
+    /// Cadre vert de la zone AF sur la photo (touche C).
+    af_frame: bool,
 
     /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
     scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
@@ -202,6 +204,7 @@ impl App {
             sharpness: vec![None; n],
             sharp_done: vec![false; n],
             af_loupe: false,
+            af_frame: true,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -292,6 +295,10 @@ impl App {
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 "n" if pressed => return self.jump_sharpest(),
+                "c" if pressed => {
+                    self.af_frame = !self.af_frame;
+                    return;
+                }
                 "a" if pressed => {
                     self.af_loupe = !self.af_loupe;
                     if let Some(w) = &self.window {
@@ -1258,7 +1265,7 @@ impl App {
                 }
             }
         }
-        let af = self.shown_af();
+        let af = self.shown_af().filter(|_| self.af_frame);
         if let Some(r) = &mut self.renderer {
             if r.set_af(af) {
                 if let Some(w) = &self.window {
