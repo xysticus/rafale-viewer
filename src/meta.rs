@@ -175,6 +175,54 @@ fn read_exif(path: &std::path::Path, limit: u64) -> Option<exif::Exif> {
         .ok()
 }
 
+/// Jour de prise de vue, « AAAA-MM-JJ » (heure de l'appareil), d'un JPEG ou d'un
+/// RAW. Les RAW sont des TIFF (parfois avec une autre signature, comme « IIRO »
+/// pour les ORF) : leur date est lue directement dans les balises, la lecture
+/// EXIF complète refusant ces fichiers tronqués à 64 Ko.
+pub fn capture_day(path: &std::path::Path) -> Option<String> {
+    let mut head = Vec::with_capacity(HEAD as usize);
+    std::fs::File::open(path).ok()?.take(HEAD).read_to_end(&mut head).ok()?;
+    let text = if head.starts_with(b"II") || head.starts_with(b"MM") {
+        tiff_date(&head)?
+    } else {
+        let exif = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(&head)).ok()?;
+        let field = exif
+            .get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)
+            .or_else(|| exif.get_field(exif::Tag::DateTime, exif::In::PRIMARY))?;
+        let exif::Value::Ascii(v) = &field.value else { return None };
+        v.first()?.clone()
+    };
+    let d = exif::DateTime::from_ascii(&text).ok()?;
+    (d.year > 1990).then(|| format!("{:04}-{:02}-{:02}", d.year, d.month, d.day))
+}
+
+/// DateTimeOriginal (IFD EXIF), sinon DateTime (IFD0), d'un en-tête TIFF.
+fn tiff_date(d: &[u8]) -> Option<Vec<u8>> {
+    let le = d[0] == b'I';
+    let u16_at = |o: usize| {
+        d.get(o..o + 2).map(|b| if le { u16::from_le_bytes([b[0], b[1]]) } else { u16::from_be_bytes([b[0], b[1]]) })
+    };
+    let u32_at = |o: usize| {
+        d.get(o..o + 4).map(|b| {
+            let v = if le { u32::from_le_bytes([b[0], b[1], b[2], b[3]]) } else { u32::from_be_bytes([b[0], b[1], b[2], b[3]]) };
+            v as usize
+        })
+    };
+    let entry = |ifd: usize, tag: u16| (0..u16_at(ifd)? as usize).map(|k| ifd + 2 + 12 * k).find(|&e| u16_at(e) == Some(tag));
+    let ascii = |e: usize| {
+        let n = u32_at(e + 4)?;
+        let at = if n <= 4 { e + 8 } else { u32_at(e + 8)? };
+        let v = d.get(at..at + n)?;
+        Some(v.split(|&c| c == 0).next()?.to_vec())
+    };
+    let ifd0 = u32_at(4)?;
+    let original = entry(ifd0, 0x8769)
+        .and_then(|e| u32_at(e + 8))
+        .and_then(|exif| entry(exif, 0x9003))
+        .and_then(ascii);
+    original.or_else(|| entry(ifd0, 0x0132).and_then(ascii))
+}
+
 /// « 1/500 s   f/4   ISO 12800 » (les éléments absents sont omis).
 fn exposure(exif: &exif::Exif) -> String {
     let rational = |tag| match exif.get_field(tag, exif::In::PRIMARY)?.value {

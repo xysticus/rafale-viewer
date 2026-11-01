@@ -7,6 +7,6 @@ Exec=rafale-viewer %f
 Icon=rafale-viewer
 Terminal=false
 Categories=Graphics;Photography;Viewer;
-MimeType=inode/directory;image/jpeg;
+MimeType=inode/directory;image/jpeg;x-content/image-dcf;
 StartupWMClass=rafale-viewer
 Keywords=photo;rafale;burst;tri;jpeg;

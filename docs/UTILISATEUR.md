@@ -48,6 +48,18 @@ Exemple :
 rafale-viewer ~/Images/2026-10-29
 ```
 
+## Importer une carte mémoire
+
+Insère la carte, ouvre-la dans Fichiers, puis clic droit sur la carte (ou sur son dossier `DCIM`) › *Ouvrir avec… › Rafale*. En terminal : `rafale-viewer /run/media/$USER/<carte>`.
+
+Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG et de RAW, taille, et pour chaque jour de prise de vue le dossier de destination. Après confirmation, une barre de progression suit la copie, puis Rafale s'ouvre sur le jour importé (le plus récent s'il y en a plusieurs).
+
+- **Destination :** `~/Images/AAAA-MM-JJ/` d'après la date de prise de vue de chaque photo ; une carte qui couvre plusieurs jours donne plusieurs dossiers. Les RAW vont dans `raw/`.
+- **Déjà importé :** un fichier de même nom et de même taille est sauté. On peut relancer l'import sans risque, par exemple après une interruption.
+- **Non copiés, et signalés dans le résumé :** les vidéos et autres fichiers, les fichiers sans date lisible, et un fichier de même nom mais de taille différente déjà présent.
+- **La carte n'est jamais modifiée.** Formate-la dans l'appareil quand tu veux.
+- Chaque fichier est copié sous un nom temporaire (`.part`) puis renommé : une interruption ne laisse jamais de photo tronquée.
+
 ## L'écran
 
 ```

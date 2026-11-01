@@ -47,7 +47,7 @@ pub fn find(dir: &Path, files: &[PathBuf]) -> Vec<Option<PathBuf>> {
         .collect()
 }
 
-fn is_raw(path: &Path) -> bool {
+pub fn is_raw(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| RAW_EXTENSIONS.iter().any(|r| e.eq_ignore_ascii_case(r)))

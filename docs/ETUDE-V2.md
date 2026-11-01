@@ -15,16 +15,13 @@ Principe commun à toutes les pistes : **ne jamais ralentir le défilé.** Tout 
 | 4 | Corbeille des rejetées | Bouton rouge « Corbeille : N rejetées » : après confirmation (nombre de fichiers, place libérée), `gio trash` sur le JPEG, le RAW et tous leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3) des photos marquées de la croix rouge, et seulement celles-là. Rafale relit ensuite le dossier sans se fermer. |
 | 6 | Intégration à GNOME | `packaging/install.sh` installe dans `~/.local` le programme, une icône et un `.desktop` : entrée « Rafale » dans le menu, *Ouvrir avec… › Rafale* sur un dossier ou une photo. Sans argument, Rafale demande le dossier ; sur une photo, il ouvre son dossier en commençant par elle ; hors terminal, les erreurs s'affichent dans une fenêtre. |
 | 7 | Reprise à la dernière photo vue | À la fermeture, Rafale note la photo affichée dans `~/.local/state/rafale/positions` (une ligne par dossier, 200 au plus), rien dans le dossier des photos. À la réouverture du dossier, il repart de cette photo ; ouvrir une photo précise l'emporte. |
+| 8 | Import de la carte | Rafale ouvert sur une carte (Fichiers › Ouvrir avec › Rafale) : résumé et confirmation, copie avec progression des JPEG vers `~/Images/AAAA-MM-JJ` (jour de prise de vue) et des RAW vers `raw/`, fichiers déjà importés sautés, carte jamais modifiée, puis ouverture du jour importé. |
 
 ## À faire
 
 ### 5. « Ouvrir les retenues dans… »
 
 Décidé : option B. Un bouton « Retoucher… » copie la sélection (retenues, ou filtrées), selon le choix JPEG / RAW / Les deux, avec leurs `.xmp`, dans un dossier voisin de la séance (`~/Images/2026-10-29-retouche/`, pas un sous-dossier : Rafale y chercherait des RAW), puis lance le logiciel de retouche sur ce dossier. Le logiciel ne voit que les photos choisies et écrit ses fichiers dans sa copie ; la séance triée et les originaux restent intacts. Choix du logiciel au premier usage, parmi ceux installés qui ouvrent un dossier ou un RAW, puis retenu.
-
-### 8. Import de la carte SD
-
-Copier la carte vers `~/Images/AAAA-MM-JJ`, en rangeant les RAW dans `raw/`, puis ouvrir le dossier. Utile seulement si ce rangement se fait aujourd'hui à la main.
 
 ## Essai : interface GTK4 / libadwaita
 
