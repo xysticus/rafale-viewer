@@ -25,7 +25,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
-use marks::{Color, Filter, Mark};
+use marks::{BurstFile, BurstMark, Color, Filter, Mark};
 use meta::Meta;
 use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
 use render::{LoupeKind, Rect, Renderer};
@@ -55,6 +55,9 @@ struct Burst {
     len: usize,
     /// Rythme mesuré, en images/s.
     rate: Option<f32>,
+    mark: BurstMark,
+    /// Fichier `.rafale` qui porte le marquage sur le disque.
+    file: Option<PathBuf>,
 }
 
 /// Géométrie de l'ascenseur de la liste, en pixels écran.
@@ -130,6 +133,8 @@ struct App {
     bursts: Vec<Burst>,
     /// Rafale de chaque fichier déjà analysé.
     burst_of: Vec<usize>,
+    /// Fichiers `.rafale` lus au lancement, rattachés à leur rafale à la fin de l'analyse.
+    burst_files: Vec<BurstFile>,
     /// Vue à plat : une vignette par photo au lieu d'une ligne par rafale.
     flat: bool,
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
@@ -186,6 +191,11 @@ impl App {
                 }
             })
             .collect::<Vec<_>>();
+        let burst_files = sidecars
+            .iter()
+            .filter(|p| p.extension().is_some_and(|e| e == marks::BURST_EXT))
+            .filter_map(|p| marks::load_burst(p))
+            .collect();
         let raws = raw::find(&dir, &files);
         let raw_foreign = sync_raws(&marks, &raws);
         let now = Instant::now();
@@ -228,6 +238,7 @@ impl App {
             scanned: 0,
             bursts: Vec::new(),
             burst_of: Vec::new(),
+            burst_files,
             flat: true,
             flat_chosen: false,
             copy_kind: CopyKind::default(),
@@ -312,6 +323,7 @@ impl App {
         // Les lettres suivent la disposition du clavier (AZERTY), le reste la position physique.
         if let Key::Character(c) = &event.logical_key {
             let ctrl = self.modifiers.state().control_key();
+            let shift = self.modifiers.state().shift_key();
             match c.to_lowercase().as_str() {
                 "c" if pressed && ctrl => return self.copy_selection(),
                 // Fonction cachée : seulement les XMP de la sélection, pour donner
@@ -332,7 +344,8 @@ impl App {
                     return;
                 }
                 "q" if pressed => return event_loop.exit(),
-                // Rejet : X comme Lightroom, R comme darktable.
+                // Rejet : X comme Lightroom, R comme darktable ; avec Maj, la rafale.
+                "x" | "r" if pressed && shift => return self.edit_burst_mark(BurstMark::toggle_rejected),
                 "x" | "r" if pressed => {
                     return self.edit_mark(|m| {
                         m.rejected = !m.rejected;
@@ -347,6 +360,11 @@ impl App {
             return;
         };
         let now = Instant::now();
+        // Chiffre = étoiles de la photo ; avec Maj, de la rafale (0 efface).
+        let shift = self.modifiers.state().shift_key();
+        if let Some(stars) = digit(code).filter(|_| pressed) {
+            return if shift { self.set_burst_rating(stars) } else { self.set_rating(stars) };
+        }
         match code {
             KeyCode::ArrowRight | KeyCode::PageDown => {
                 self.forward_held = pressed;
@@ -370,13 +388,8 @@ impl App {
                     self.jump(i, now);
                 }
             }
+            KeyCode::Space if pressed && shift => self.edit_burst_mark(BurstMark::toggle_retained),
             KeyCode::Space if pressed => self.edit_mark(Mark::toggle_retained),
-            KeyCode::Digit0 | KeyCode::Numpad0 if pressed => self.set_rating(0),
-            KeyCode::Digit1 | KeyCode::Numpad1 if pressed => self.set_rating(1),
-            KeyCode::Digit2 | KeyCode::Numpad2 if pressed => self.set_rating(2),
-            KeyCode::Digit3 | KeyCode::Numpad3 if pressed => self.set_rating(3),
-            KeyCode::Digit4 | KeyCode::Numpad4 if pressed => self.set_rating(4),
-            KeyCode::Digit5 | KeyCode::Numpad5 if pressed => self.set_rating(5),
             KeyCode::F1 if pressed => self.toggle_color(Color::Red),
             KeyCode::F2 if pressed => self.toggle_color(Color::Yellow),
             KeyCode::F3 if pressed => self.toggle_color(Color::Green),
@@ -847,6 +860,13 @@ impl App {
                 m.rating = 0;
                 m.picked = false;
             }),
+            Widget::BurstStar(n) => {
+                let Some(b) = self.markable_burst() else { return };
+                let n = if self.bursts[b].mark.rating == n { 0 } else { n };
+                self.set_burst_rating(n);
+            }
+            Widget::BurstCheck => self.edit_burst_mark(BurstMark::toggle_retained),
+            Widget::BurstReject => self.edit_burst_mark(BurstMark::toggle_rejected),
             _ => {}
         }
     }
@@ -876,7 +896,7 @@ impl App {
             Widget::Copy => return self.copy_selection(),
             Widget::Trash => return self.ask_trash(),
             Widget::Retouch => return self.retouch(self.modifiers.state().shift_key()),
-            Widget::Photo(_) => return,
+            Widget::Photo(_) | Widget::BurstStar(_) | Widget::BurstCheck | Widget::BurstReject => return,
         }
         self.set_filter(f);
     }
@@ -983,6 +1003,10 @@ impl App {
                 }
             }
         };
+        let burst = self.markable_burst().map(|b| {
+            let bm = self.bursts[b].mark;
+            Controls { rating: bm.rating, colors: [false; 5], check: bm.retained(), reject: bm.rejected }
+        });
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -1088,13 +1112,13 @@ impl App {
             },
         ];
         let key = format!(
-            "{width}|{controls:?}|{}",
+            "{width}|{controls:?}|{burst:?}|{}",
             lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("|")
         );
         if key == self.panel_key {
             return;
         }
-        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, &lines);
+        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, burst.as_ref(), &lines);
         renderer.set_panel(&pixels, w, h);
         self.info_hits = hits;
         self.panel_key = key;
@@ -1127,6 +1151,8 @@ impl App {
                 start: index,
                 len: 1,
                 rate: None,
+                mark: BurstMark::default(),
+                file: None,
             }),
         }
         self.burst_of.push(self.bursts.len() - 1);
@@ -1140,6 +1166,7 @@ impl App {
         self.bursts.last_mut().unwrap().rate = rate;
         self.scanned = index + 1;
         if self.scanned == self.files.len() {
+            self.attach_burst_files();
             let rates: Vec<f32> = self.bursts.iter().filter_map(|b| b.rate).collect();
             log::info!(
                 "{} rafales, rythme mesuré pour {} : {:?} i/s",
@@ -1148,6 +1175,49 @@ impl App {
                 rates.iter().map(|r| format!("{r:.1}")).collect::<std::collections::BTreeSet<_>>()
             );
         }
+    }
+
+    /// Fin de l'analyse : chaque fichier `.rafale` va à la rafale qui contient sa
+    /// première vue, ou à défaut sa dernière.
+    fn attach_burst_files(&mut self) {
+        for file in std::mem::take(&mut self.burst_files) {
+            let Some(b) = burst_for(&self.files, &self.burst_of, &file.first, &file.last) else {
+                log::warn!("{} : aucune de ses vues n'est dans la séance", file.path.display());
+                continue;
+            };
+            let burst = &mut self.bursts[b];
+            if burst.file.is_some() {
+                log::warn!("{} : rafale {} déjà marquée par un autre fichier", file.path.display(), b + 1);
+                continue;
+            }
+            burst.mark = file.mark;
+            burst.file = Some(file.path);
+        }
+    }
+
+    /// Rafale de la photo affichée, si son marquage est possible : vue par rafales,
+    /// analyse terminée (les bornes des rafales sont connues).
+    fn markable_burst(&self) -> Option<usize> {
+        if self.flat_view() || self.scanned < self.files.len() {
+            return None;
+        }
+        self.burst_of.get(self.cur).copied()
+    }
+
+    /// Modifie le marquage de la rafale affichée et l'enregistre dans son fichier `.rafale`.
+    fn edit_burst_mark(&mut self, f: impl FnOnce(&mut BurstMark)) {
+        let Some(b) = self.markable_burst() else { return };
+        let burst = &mut self.bursts[b];
+        f(&mut burst.mark);
+        let (first, last) = (&self.files[burst.start], &self.files[burst.start + burst.len - 1]);
+        match marks::save_burst(burst.file.as_deref(), first, last, burst.len, &burst.mark) {
+            Ok(file) => burst.file = file,
+            Err(e) => log::error!("rafale {} : {e}", b + 1),
+        }
+    }
+
+    fn set_burst_rating(&mut self, stars: u8) {
+        self.edit_burst_mark(|m| m.set_rating(stars));
     }
 
     /// Liste autour de la ligne courante (rafales, ou rangées de photos en vue à
@@ -1245,6 +1315,7 @@ impl App {
                             .iter()
                             .filter(|m| m.retained())
                             .count(),
+                        mark: b.mark,
                         current: Some(i) == cur_burst,
                     })
                 })
@@ -1840,6 +1911,26 @@ mod positions {
 }
 
 /// Images visibles (liste triée) parmi `start..start + len`.
+/// Étoiles d'une touche chiffre (rangée du haut ou pavé numérique).
+fn digit(code: KeyCode) -> Option<u8> {
+    Some(match code {
+        KeyCode::Digit0 | KeyCode::Numpad0 => 0,
+        KeyCode::Digit1 | KeyCode::Numpad1 => 1,
+        KeyCode::Digit2 | KeyCode::Numpad2 => 2,
+        KeyCode::Digit3 | KeyCode::Numpad3 => 3,
+        KeyCode::Digit4 | KeyCode::Numpad4 => 4,
+        KeyCode::Digit5 | KeyCode::Numpad5 => 5,
+        _ => return None,
+    })
+}
+
+/// Rafale qui contient la vue nommée `first`, ou à défaut `last`.
+fn burst_for(files: &[PathBuf], burst_of: &[usize], first: &str, last: &str) -> Option<usize> {
+    let find = |name: &str| files.iter().position(|f| f.file_name().is_some_and(|n| n == name));
+    let i = find(first).or_else(|| find(last))?;
+    burst_of.get(i).copied()
+}
+
 fn visible_in(visible: &[usize], start: usize, len: usize) -> &[usize] {
     let a = visible.partition_point(|&v| v < start);
     let b = visible.partition_point(|&v| v < start + len);
@@ -2025,6 +2116,18 @@ mod tests {
     fn uri_encodee() {
         let p = std::path::Path::new("/home/a/Images/Pastré lumière/P#1.JPG");
         assert_eq!(super::file_uri(p), "file:///home/a/Images/Pastr%C3%A9%20lumi%C3%A8re/P%231.JPG");
+    }
+
+    #[test]
+    fn fichier_rafale_rattache() {
+        use super::burst_for;
+        use std::path::PathBuf;
+        let files: Vec<PathBuf> = ["P1.JPG", "P2.JPG", "P3.JPG", "P4.JPG"].iter().map(|n| PathBuf::from("/s").join(n)).collect();
+        let burst_of = [0, 0, 1, 1];
+        assert_eq!(burst_for(&files, &burst_of, "P3.JPG", "P4.JPG"), Some(1));
+        // Première vue supprimée : la dernière désigne la rafale.
+        assert_eq!(burst_for(&files, &burst_of, "P0.JPG", "P2.JPG"), Some(0));
+        assert_eq!(burst_for(&files, &burst_of, "P0.JPG", "P9.JPG"), None);
     }
 }
 
