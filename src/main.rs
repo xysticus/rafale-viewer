@@ -655,12 +655,11 @@ impl App {
         log::info!("retouche : {}", self.copy_message);
     }
 
-    /// Photos marquées rejetées (croix rouge), et tous leurs fichiers : JPEG,
-    /// RAW et fichiers d'accompagnement de chacun.
-    fn rejected_files(&self) -> (usize, Vec<PathBuf>) {
-        let rejected: Vec<usize> = (0..self.files.len()).filter(|&i| self.marks[i].rejected).collect();
+    /// Tous les fichiers des photos `photos` : JPEG, RAW et fichiers
+    /// d'accompagnement de chacun.
+    fn photo_files(&self, photos: &[usize]) -> Vec<PathBuf> {
         let mut files = Vec::new();
-        for &i in &rejected {
+        for &i in photos {
             files.extend(companions(&self.files[i]));
             if let Some(raw) = &self.raws[i] {
                 files.extend(companions(raw));
@@ -668,29 +667,54 @@ impl App {
         }
         files.sort();
         files.dedup();
-        (rejected.len(), files)
+        files
+    }
+
+    /// Rafale que le bouton « Corbeille » vise : la rafale bloquée, si elle est rejetée.
+    fn trash_burst(&self) -> Option<usize> {
+        self.locked.filter(|&b| self.bursts[b].mark.rejected)
     }
 
     /// Bouton « Corbeille » : demande confirmation (fenêtre zenity, non bloquante).
+    /// Il vise la rafale bloquée et rejetée, sinon les photos rejetées.
     fn ask_trash(&mut self) {
         if self.help_open() {
             return;
         }
-        let (photos, files) = self.rejected_files();
+        let (question, warning, files) = match self.trash_burst() {
+            Some(b) => {
+                let burst = &self.bursts[b];
+                let photos: Vec<usize> = burst.range().collect();
+                let mut files = self.photo_files(&photos);
+                files.extend(burst.file.clone());
+                let retained = photos.iter().filter(|&&i| self.marks[i].retained()).count();
+                let warning = match retained {
+                    0 => String::new(),
+                    1 => "\n\nAttention : une photo de cette rafale est retenue.".to_string(),
+                    n => format!("\n\nAttention : {n} photos de cette rafale sont retenues."),
+                };
+                (format!("Mettre à la corbeille la rafale {} ({} photos) ?", b + 1, burst.len), warning, files)
+            }
+            None => {
+                let rejected: Vec<usize> = (0..self.files.len()).filter(|&i| self.marks[i].rejected).collect();
+                let files = self.photo_files(&rejected);
+                (format!("Mettre à la corbeille les {} photos rejetées ?", rejected.len()), String::new(), files)
+            }
+        };
         if files.is_empty() {
             return;
         }
         let is_photo = |p: &PathBuf| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .is_some_and(|e| !e.eq_ignore_ascii_case("xmp") && !e.eq_ignore_ascii_case("pp3"))
+                .is_some_and(|e| !["xmp", "pp3", marks::BURST_EXT].iter().any(|x| e.eq_ignore_ascii_case(x)))
         };
         let images = files.iter().filter(|p| is_photo(p)).count();
         let bytes: u64 = files.iter().filter_map(|p| p.metadata().ok()).map(|m| m.len()).sum();
         let text = format!(
-            "Mettre à la corbeille les {photos} photos rejetées ?\n\n\
+            "{question}\n\n\
              {images} fichiers photo (JPEG et RAW) et {} fichiers d'accompagnement \
-             (XMP, PP3), soit {:.0} Mo.\n\nIls restent récupérables dans la corbeille de GNOME.",
+             (XMP, PP3, rafale), soit {:.0} Mo.{warning}\n\nIls restent récupérables dans la corbeille de GNOME.",
             files.len() - images,
             bytes as f64 / 1e6
         );
@@ -1375,6 +1399,7 @@ impl App {
     /// plat) ; recomposée seulement si elle change.
     fn update_list(&mut self) {
         let members = self.locked.map(|b| self.burst_members(self.bursts[b].start)).unwrap_or_default();
+        let trash_burst = self.trash_burst();
         let warned: Vec<bool> = (0..self.bursts.len()).map(|b| !self.burst_issues(b).is_empty()).collect();
         let Some(renderer) = &mut self.renderer else {
             return;
@@ -1513,7 +1538,10 @@ impl App {
         let what = if filtering { "filtrées" } else { "retenues" };
         let rejected = self.marks.iter().filter(|m| m.rejected).count();
         let view = View {
-            trash_label: (rejected > 0).then(|| format!("Corbeille : {rejected} rejetée{}", if rejected > 1 { "s" } else { "" })),
+            trash_label: match trash_burst {
+                Some(b) => Some(format!("Corbeille : rafale {} ({} photos)", b + 1, self.bursts[b].len)),
+                None => (rejected > 0).then(|| format!("Corbeille : {rejected} rejetée{}", if rejected > 1 { "s" } else { "" })),
+            },
             flat_available: self.files.len() < FLAT_MAX,
             flat,
             copy_kind: self.copy_kind,
