@@ -34,7 +34,7 @@ Question : une interface en vrais widgets GNOME ralentirait-elle le défilé ? E
 
 Pleine résolution, processeur et mémoire : équivalents. Conclusion provisoire : à 25 i/s, GTK ne ralentit pas ; il a moins de marge à cadence élevée. L'aspect GNOME plaît.
 
-Essai sur le M7 Ultra (Ryzen 5 7640HS, Radeon 760M intégrée, même écran 144 Hz), 2 novembre 2026, mêmes commandes, deux passes par cadence plus 30 s à 25 i/s :
+Essai sur le M6 Ultra (GMKtec NucBox, Ryzen 5 7640HS, Radeon 760M intégrée, même écran 144 Hz), 2 novembre 2026, mêmes commandes, deux passes par cadence plus 30 s à 25 i/s :
 
 | Cadence visée | winit + wgpu (3.0.0-dev) | GTK4 + libadwaita |
 |---|---|---|
@@ -43,7 +43,7 @@ Essai sur le M7 Ultra (Ryzen 5 7640HS, Radeon 760M intégrée, même écran 144 
 | 30 s à 25 i/s | 25,0 ; 40,0 ms, 0 à-coup sur 734 | 25,0 ; médian 41,5 ms (max 54), 0 à-coup sur 734 |
 | Pleine résolution | 291 à 294 ms | 233 à 242 ms |
 
-Aucun ralentissement à la chauffe sur 30 s. Le processeur bridé tient le défilé dans les deux versions ; GTK reste un peu moins régulier à 50 i/s, mais 9 à-coups sur 220 ne se remarquent pas, et sa pleine résolution arrive plus vite. Conclusion : **GTK est viable aussi sur le M7 Ultra**.
+Aucun ralentissement à la chauffe sur 30 s. Le processeur bridé tient le défilé dans les deux versions ; GTK reste un peu moins régulier à 50 i/s, mais 9 à-coups sur 220 ne se remarquent pas, et sa pleine résolution arrive plus vite. Conclusion : **GTK est viable aussi sur le M6 Ultra**.
 
 Effet de bord de l'essai : les « flashs » au début de la séance venaient d'exports (digiKam `_v1`, darktable `-1`) intercalés dans le défilé et d'une photo écrasée par un recadrage de gThumb (PA290088, restaurée depuis le SSD) ; rangés dans `exports/`.
 
