@@ -315,6 +315,39 @@ impl BurstMark {
     }
 }
 
+/// Règle de cohérence non respectée entre une rafale et ses photos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Issue {
+    /// Rafale retenue sans photo retenue.
+    NoRetained,
+    /// Rafale notée sans photo (non rejetée) à cette note ou plus.
+    RatingUnmet(u8),
+    /// Rafale rejetée qui contient des photos retenues (leur nombre).
+    RejectedWithRetained(usize),
+}
+
+/// Règles de cohérence entre le marquage d'une rafale et celui de ses photos
+/// (la retenue automatique de la rafale, à la coche d'une photo, est faite à part) :
+/// une rafale retenue contient une photo retenue, une rafale notée X une photo
+/// notée X ou plus, une rafale rejetée aucune photo retenue.
+pub fn check_burst(burst: &BurstMark, photos: &[Mark]) -> Vec<Issue> {
+    let retained = photos.iter().filter(|m| m.retained()).count();
+    let mut issues = Vec::new();
+    if burst.rejected {
+        if retained > 0 {
+            issues.push(Issue::RejectedWithRetained(retained));
+        }
+        return issues;
+    }
+    if burst.picked && retained == 0 {
+        issues.push(Issue::NoRetained);
+    }
+    if burst.rating > 0 && !photos.iter().any(|m| !m.rejected && m.rating >= burst.rating) {
+        issues.push(Issue::RatingUnmet(burst.rating));
+    }
+    issues
+}
+
 /// Extension des fichiers de marquage des rafales.
 pub const BURST_EXT: &str = "rafale";
 const BURST_FORMAT: &str = "rafale-viewer 3";
@@ -559,6 +592,26 @@ mod tests {
         // Marquage effacé : plus de fichier.
         assert_eq!(save_burst(Some(&moved), &second, &last, 14, &BurstMark::default()).unwrap(), None);
         assert!(!moved.exists());
+    }
+
+    #[test]
+    fn regles_de_coherence() {
+        let note = |rating| Mark { rating, ..Default::default() };
+        let coche = Mark { picked: true, ..Default::default() };
+        let rejetee4 = Mark { rating: 4, rejected: true, ..Default::default() };
+        let retenue = BurstMark { picked: true, ..Default::default() };
+        assert_eq!(check_burst(&retenue, &[note(3)]), [Issue::NoRetained]);
+        assert_eq!(check_burst(&retenue, &[note(3), coche]), []);
+        // Note : une photo à la note ou plus, rejetées exclues.
+        let quatre = BurstMark { rating: 4, ..Default::default() };
+        assert_eq!(check_burst(&quatre, &[note(3), rejetee4]), [Issue::RatingUnmet(4)]);
+        assert_eq!(check_burst(&quatre, &[note(5)]), []);
+        let les_deux = BurstMark { rating: 2, picked: true, rejected: false };
+        assert_eq!(check_burst(&les_deux, &[note(1)]), [Issue::NoRetained, Issue::RatingUnmet(2)]);
+        let rejet = BurstMark { rejected: true, ..Default::default() };
+        assert_eq!(check_burst(&rejet, &[coche, coche, note(5)]), [Issue::RejectedWithRetained(2)]);
+        assert_eq!(check_burst(&rejet, &[note(5)]), []);
+        assert_eq!(check_burst(&BurstMark::default(), &[note(1)]), []);
     }
 
     #[test]

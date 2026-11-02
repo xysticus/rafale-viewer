@@ -25,7 +25,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
-use marks::{BurstFile, BurstMark, Color, Filter, Mark};
+use marks::{BurstFile, BurstMark, Color, Filter, Issue, Mark};
 use meta::Meta;
 use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
 use render::{LoupeKind, Rect, Renderer};
@@ -48,6 +48,10 @@ enum Pending {
     Trash(Vec<PathBuf>),
     /// Choix du logiciel de retouche.
     Editor,
+    /// Copie (Ctrl+C) ou retouche (avec ou sans choix du logiciel) confirmée
+    /// malgré des rafales signalées.
+    Copy,
+    Retouch(bool),
 }
 
 struct Burst {
@@ -484,9 +488,17 @@ impl App {
         }
     }
 
+    /// Ctrl+C, bouton de copie : après confirmation s'il reste des rafales signalées.
+    fn copy_selection(&mut self) {
+        if self.help_open() || self.confirm_bursts(Pending::Copy) {
+            return;
+        }
+        self.copy_selection_now();
+    }
+
     /// Met les fichiers de la sélection dans le presse-papiers, comme une copie
     /// dans Fichiers : un Ctrl+V dans un dossier les y copie.
-    fn copy_selection(&mut self) {
+    fn copy_selection_now(&mut self) {
         let selection = self.selection();
         let mut paths = Vec::new();
         let mut no_raw = 0;
@@ -592,9 +604,13 @@ impl App {
     /// « Retoucher… » : copie la sélection à côté de la séance et y lance le
     /// logiciel retenu ; au premier usage, ou avec Maj, demande lequel.
     fn retouch(&mut self, choose: bool) {
-        if self.help_open() {
+        if self.help_open() || self.confirm_bursts(Pending::Retouch(choose)) {
             return;
         }
+        self.retouch_now(choose);
+    }
+
+    fn retouch_now(&mut self, choose: bool) {
         match retouch::saved_editor().filter(|_| !choose) {
             Some(editor) => self.retouch_with(&editor),
             None if retouch::installed_editors().is_empty() => {
@@ -704,6 +720,8 @@ impl App {
                 retouch::save_editor(&out);
                 self.retouch_with(&out);
             }
+            Pending::Copy if ok => self.copy_selection_now(),
+            Pending::Retouch(choose) if ok => self.retouch_now(choose),
             _ => {}
         }
     }
@@ -867,7 +885,9 @@ impl App {
             );
             return;
         }
+        let was_retained = mark.retained();
         f(mark);
+        let now_retained = mark.retained();
         if let Err(e) = marks::save(&self.files[self.cur], mark) {
             log::error!("{} : {e}", marks::sidecar(&self.files[self.cur]).display());
         }
@@ -881,6 +901,14 @@ impl App {
         }
         // L'image courante reste affichée même si elle ne passe plus le filtre.
         self.refresh_visible();
+        // Retenir une photo retient sa rafale (et lève son rejet) ; l'inverse
+        // n'est pas automatique.
+        if now_retained && !was_retained {
+            self.edit_burst_mark(|m| {
+                m.picked = true;
+                m.rejected = false;
+            });
+        }
     }
 
     /// Clic sur une commande de marquage (en haut du panneau).
@@ -1043,6 +1071,11 @@ impl App {
                 }
             }
         };
+        let (issue, advice) = self
+            .markable_burst()
+            .and_then(|b| self.burst_issues(b).first().copied())
+            .map(issue_text)
+            .unwrap_or_default();
         let burst = self.markable_burst().map(|b| {
             let bm = self.bursts[b].mark;
             Controls { rating: bm.rating, colors: [false; 5], check: bm.retained(), reject: bm.rejected }
@@ -1151,6 +1184,9 @@ impl App {
                 color: [150, 150, 150],
                 gap: 3.0,
             },
+            // Règle de cohérence non respectée par la rafale, et quoi faire.
+            Line { text: issue, size: 16.0, color: panel::WARNING, gap: 8.0 },
+            Line { text: advice, size: 16.0, color: [190, 160, 110], gap: 2.0 },
         ];
         let key = format!(
             "{width}|{controls:?}|{burst:?}|{}",
@@ -1249,11 +1285,85 @@ impl App {
     fn edit_burst_mark(&mut self, f: impl FnOnce(&mut BurstMark)) {
         let Some(b) = self.markable_burst() else { return };
         let burst = &mut self.bursts[b];
+        let before = burst.mark;
         f(&mut burst.mark);
+        if burst.mark == before {
+            return;
+        }
         let (first, last) = (&self.files[burst.start], &self.files[burst.start + burst.len - 1]);
         match marks::save_burst(burst.file.as_deref(), first, last, burst.len, &burst.mark) {
             Ok(file) => burst.file = file,
             Err(e) => log::error!("rafale {} : {e}", b + 1),
+        }
+    }
+
+    /// Règles de cohérence non respectées par la rafale `b` (rien avant la fin
+    /// de l'analyse : les bornes des rafales ne sont pas encore connues).
+    fn burst_issues(&self, b: usize) -> Vec<Issue> {
+        if self.scanned < self.files.len() {
+            return Vec::new();
+        }
+        let burst = &self.bursts[b];
+        marks::check_burst(&burst.mark, &self.marks[burst.range()])
+    }
+
+    /// Récapitulatif des rafales signalées, pour la confirmation de copie (vide s'il n'y en a pas).
+    fn issues_summary(&self) -> String {
+        let mut empty = Vec::new();
+        let mut unmet = Vec::new();
+        let mut rejected = Vec::new();
+        for b in 0..self.bursts.len() {
+            for issue in self.burst_issues(b) {
+                match issue {
+                    Issue::NoRetained => empty.push(b + 1),
+                    Issue::RatingUnmet(_) => unmet.push(b + 1),
+                    Issue::RejectedWithRetained(_) => rejected.push(b + 1),
+                }
+            }
+        }
+        let line = |numbers: &[usize], one: &str, many: &str| {
+            let list = numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
+            match numbers.len() {
+                0 => None,
+                1 => Some(format!("1 {one} : {list}")),
+                n => Some(format!("{n} {many} : {list}")),
+            }
+        };
+        [
+            line(&empty, "rafale retenue sans photo retenue", "rafales retenues sans photo retenue"),
+            line(&unmet, "rafale notée sans photo à sa note", "rafales notées sans photo à leur note"),
+            line(&rejected, "rafale rejetée avec des photos retenues", "rafales rejetées avec des photos retenues"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
+    }
+
+    /// Avant une copie ou une retouche : s'il reste des rafales signalées, ouvre
+    /// la confirmation et renvoie true (l'action attend la réponse).
+    fn confirm_bursts(&mut self, pending: Pending) -> bool {
+        let summary = self.issues_summary();
+        if summary.is_empty() {
+            return false;
+        }
+        let text = format!("Des rafales ne sont pas cohérentes avec leurs photos :\n\n{summary}");
+        let child = Command::new("zenity")
+            .args(["--question", "--title", "Rafale", "--icon", "dialog-warning", "--text", &text])
+            .args(["--ok-label", "Copier quand même", "--cancel-label", "Annuler"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match child {
+            Ok(c) => {
+                self.help = Some(c);
+                self.modal = Some(pending);
+                true
+            }
+            Err(e) => {
+                log::warn!("zenity : {e}");
+                false
+            }
         }
     }
 
@@ -1265,6 +1375,7 @@ impl App {
     /// plat) ; recomposée seulement si elle change.
     fn update_list(&mut self) {
         let members = self.locked.map(|b| self.burst_members(self.bursts[b].start)).unwrap_or_default();
+        let warned: Vec<bool> = (0..self.bursts.len()).map(|b| !self.burst_issues(b).is_empty()).collect();
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -1375,6 +1486,7 @@ impl App {
                             .filter(|m| m.retained())
                             .count(),
                         mark: b.mark,
+                        warn: warned[i],
                         current: Some(i) == cur_burst,
                     })
                 })
@@ -1971,6 +2083,26 @@ mod positions {
 }
 
 /// Images visibles (liste triée) parmi `start..start + len`.
+/// Signalement d'une rafale dans le panneau (le ⚠ de tête est dessiné), et
+/// ce qu'il faut faire pour le lever.
+fn issue_text(issue: Issue) -> (String, String) {
+    let plural = |n: usize| if n > 1 { "s" } else { "" };
+    match issue {
+        Issue::NoRetained => (
+            "⚠ Rafale retenue : aucune photo retenue.".into(),
+            "Coche la meilleure (Espace), ou décoche la rafale (Maj+Espace).".into(),
+        ),
+        Issue::RatingUnmet(n) => (
+            format!("⚠ Rafale notée {n} : aucune photo à {n} étoile{} ou plus.", plural(n as usize)),
+            "Trouve-la, ou baisse la note de la rafale.".into(),
+        ),
+        Issue::RejectedWithRetained(n) => (
+            format!("⚠ Rafale rejetée : {n} photo{} retenue{}.", plural(n), plural(n)),
+            format!("Décoche-l{}, ou réintègre la rafale (Maj+X).", if n > 1 { "es" } else { "a" }),
+        ),
+    }
+}
+
 /// Étoiles d'une touche chiffre (rangée du haut ou pavé numérique).
 fn digit(code: KeyCode) -> Option<u8> {
     Some(match code {
