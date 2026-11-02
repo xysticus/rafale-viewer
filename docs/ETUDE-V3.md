@@ -104,5 +104,5 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 
 - **Cases ✓ et ✕ lisibles décochées** : pour la photo comme pour la rafale, une case non cochée montre sa coche ou sa croix en gris, pour qu'on les distingue sans les cocher.
 - **Mode en cours bien visible dans le panneau de droite** : rafale bloquée ou non, avec un symbole distinct et assez voyant pour s'en rendre compte d'un coup d'œil.
-- **Retenir une photo ne retient plus sa rafale** (abandon de la règle 1) : Espace retient la photo, Ctrl+Espace la rafale (aujourd'hui Maj+Espace), symétriques et indépendants du contexte, même en rafale bloquée. L'utilisateur fait les deux ; la règle 2 signale une rafale retenue sans photo retenue.
+- **Retenir une photo ne retient plus sa rafale** (abandon de la règle 1) : Espace retient la photo, Maj+Espace la rafale, symétriques et indépendants du contexte, même en rafale bloquée. L'utilisateur fait les deux ; la règle 2 signale une rafale retenue sans photo retenue.
 - **Cadre vert de la zone AF absent au démarrage** : il s'active avec C si on le veut.
