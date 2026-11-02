@@ -144,7 +144,7 @@ N : vue la plus nette de la rafale (netteté de la zone AF)
 FENÊTRE
 
 F ou F11 : plein écran
-Échap ou Q : quitter
+Ctrl+Q : quitter
 
 SOURIS
 

@@ -121,7 +121,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | N | Vue la plus nette de la rafale (voir « Netteté AF ») |
 | C | Affiche ↔ masque le cadre vert de la zone AF |
 | F ou F11 | Plein écran |
-| Échap ou Q | Quitter |
+| Ctrl+Q | Quitter |
 
 **Le défilé.** Un appui bref avance d'une seule photo. Si tu maintiens la touche plus de 0,3 s, le défilé continu démarre. Il ne saute jamais d'image : si le disque ou le décodage ne suivent pas, il ralentit au lieu de sauter des photos. Pendant le défilé, les photos sont affichées en aperçu réduit. Au relâchement, la pleine résolution arrive en environ un quart de seconde.
 

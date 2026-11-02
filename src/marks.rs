@@ -326,9 +326,8 @@ pub enum Issue {
     RejectedWithRetained(usize),
 }
 
-/// Règles de cohérence entre le marquage d'une rafale et celui de ses photos
-/// (la retenue automatique de la rafale, à la coche d'une photo, est faite à part) :
-/// une rafale retenue contient une photo retenue, une rafale notée X une photo
+/// Règles de cohérence entre le marquage d'une rafale et celui de ses photos,
+/// marquées indépendamment l'une des autres : une rafale retenue contient une photo retenue, une rafale notée X une photo
 /// notée X ou plus, une rafale rejetée aucune photo retenue.
 pub fn check_burst(burst: &BurstMark, photos: &[Mark]) -> Vec<Issue> {
     let retained = photos.iter().filter(|m| m.retained()).count();

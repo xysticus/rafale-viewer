@@ -245,7 +245,7 @@ impl App {
             sharpness: vec![None; n],
             sharp_done: vec![false; n],
             af_loupe: false,
-            af_frame: true,
+            af_frame: false,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -358,6 +358,7 @@ impl App {
                 // Fonction cachée : seulement les XMP de la sélection, pour donner
                 // les marquages à un logiciel qu'on essaie sur une copie des photos.
                 "x" if pressed && ctrl => return self.copy_xmp(),
+                "q" if pressed && ctrl => return event_loop.exit(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 "n" if pressed => return self.jump_sharpest(),
@@ -372,7 +373,6 @@ impl App {
                     }
                     return;
                 }
-                "q" if pressed => return event_loop.exit(),
                 // Rejet : X comme Lightroom, R comme darktable ; avec Maj, la rafale.
                 "x" | "r" if pressed && shift => return self.edit_burst_mark(BurstMark::toggle_rejected),
                 "x" | "r" if pressed => {
@@ -431,9 +431,13 @@ impl App {
             KeyCode::F4 if pressed => self.toggle_color(Color::Blue),
             KeyCode::F5 if pressed => self.toggle_color(Color::Purple),
             KeyCode::F11 if pressed => self.toggle_fullscreen(),
-            // Échap débloque d'abord la rafale, plutôt que de fermer Rafale.
+            // Échap débloque la rafale, sinon sort du plein écran (on quitte par Ctrl+Q).
             KeyCode::Escape if pressed && self.locked.is_some() => self.toggle_lock(),
-            KeyCode::Escape if pressed => event_loop.exit(),
+            KeyCode::Escape if pressed => {
+                if let Some(w) = self.window.as_ref().filter(|w| w.fullscreen().is_some()) {
+                    w.set_fullscreen(None);
+                }
+            }
             _ => {}
         }
     }
@@ -909,9 +913,7 @@ impl App {
             );
             return;
         }
-        let was_retained = mark.retained();
         f(mark);
-        let now_retained = mark.retained();
         if let Err(e) = marks::save(&self.files[self.cur], mark) {
             log::error!("{} : {e}", marks::sidecar(&self.files[self.cur]).display());
         }
@@ -925,14 +927,6 @@ impl App {
         }
         // L'image courante reste affichée même si elle ne passe plus le filtre.
         self.refresh_visible();
-        // Retenir une photo retient sa rafale (et lève son rejet) ; l'inverse
-        // n'est pas automatique.
-        if now_retained && !was_retained {
-            self.edit_burst_mark(|m| {
-                m.picked = true;
-                m.rejected = false;
-            });
-        }
     }
 
     /// Clic sur une commande de marquage (en haut du panneau).
@@ -1213,13 +1207,15 @@ impl App {
             Line { text: advice, size: 16.0, color: [190, 160, 110], gap: 2.0 },
         ];
         let key = format!(
-            "{width}|{controls:?}|{burst:?}|{}",
+            "{width}|{controls:?}|{burst:?}|{:?}|{}",
+            self.locked,
             lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("|")
         );
         if key == self.panel_key {
             return;
         }
-        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, burst.as_ref(), &lines);
+        let locked = self.locked.is_some();
+        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, burst.as_ref(), locked, &lines);
         renderer.set_panel(&pixels, w, h);
         self.info_hits = hits;
         self.panel_key = key;
@@ -1538,6 +1534,7 @@ impl App {
         let what = if filtering { "filtrées" } else { "retenues" };
         let rejected = self.marks.iter().filter(|m| m.rejected).count();
         let view = View {
+            locked: locked.is_some(),
             trash_label: match trash_burst {
                 Some(b) => Some(format!("Corbeille : rafale {} ({} photos)", b + 1, self.bursts[b].len)),
                 None => (rejected > 0).then(|| format!("Corbeille : {rejected} rejetée{}", if rejected > 1 { "s" } else { "" })),
