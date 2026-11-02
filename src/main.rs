@@ -60,6 +60,12 @@ struct Burst {
     file: Option<PathBuf>,
 }
 
+impl Burst {
+    fn range(&self) -> std::ops::Range<usize> {
+        self.start..self.start + self.len
+    }
+}
+
 /// Géométrie de l'ascenseur de la liste, en pixels écran.
 #[derive(Clone, Copy)]
 struct Scrollbar {
@@ -135,6 +141,8 @@ struct App {
     burst_of: Vec<usize>,
     /// Fichiers `.rafale` lus au lancement, rattachés à leur rafale à la fin de l'analyse.
     burst_files: Vec<BurstFile>,
+    /// Rafale bloquée (Entrée) : on ne parcourt qu'elle, et la liste montre ses vues.
+    locked: Option<usize>,
     /// Vue à plat : une vignette par photo au lieu d'une ligne par rafale.
     flat: bool,
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
@@ -239,6 +247,7 @@ impl App {
             bursts: Vec::new(),
             burst_of: Vec::new(),
             burst_files,
+            locked: None,
             flat: true,
             flat_chosen: false,
             copy_kind: CopyKind::default(),
@@ -278,20 +287,36 @@ impl App {
         };
     }
 
-    /// `k`-ième image visible après (`dir` = 1) ou avant (`dir` = -1) l'image `from`.
+    /// `k`-ième image visible après (`dir` = 1) ou avant (`dir` = -1) l'image `from`,
+    /// sans sortir de la rafale bloquée.
     fn neighbor(&self, from: usize, dir: isize, k: usize) -> Option<usize> {
-        if !self.filter.active() {
-            return from
-                .checked_add_signed(dir * k as isize)
-                .filter(|&i| i < self.files.len());
-        }
-        if dir > 0 {
+        let i = if !self.filter.active() {
+            from.checked_add_signed(dir * k as isize).filter(|&i| i < self.files.len())
+        } else if dir > 0 {
             let pos = self.visible.partition_point(|&v| v <= from);
             self.visible.get(pos + k - 1).copied()
         } else {
             let pos = self.visible.partition_point(|&v| v < from);
             pos.checked_sub(k).map(|p| self.visible[p])
+        };
+        i.filter(|&i| self.nav_range().contains(&i))
+    }
+
+    /// Images parcourues : la rafale bloquée, ou toute la séance.
+    fn nav_range(&self) -> std::ops::Range<usize> {
+        match self.locked {
+            Some(b) => self.bursts[b].range(),
+            None => 0..self.files.len(),
         }
+    }
+
+    /// Entrée : bloque la rafale de la photo affichée, ou la débloque.
+    fn toggle_lock(&mut self) {
+        self.locked = match self.locked {
+            Some(_) => None,
+            None => self.markable_burst(),
+        };
+        self.list_offset = 0;
     }
 
     fn first_visible_in(&self, start: usize, len: usize) -> Option<usize> {
@@ -377,17 +402,23 @@ impl App {
             KeyCode::ArrowUp if pressed => self.vertical_step(-1, now),
             KeyCode::ArrowDown if pressed => self.vertical_step(1, now),
             KeyCode::Home if pressed => {
-                if let Some(i) = self.first_visible_in(0, self.files.len()) {
+                let r = self.nav_range();
+                if let Some(i) = self.first_visible_in(r.start, r.len()) {
                     self.jump(i, now);
                 }
             }
             KeyCode::End if pressed => {
-                let last = self.files.len() - 1;
-                let target = if self.filter.active() { self.visible.last().copied() } else { Some(last) };
+                let r = self.nav_range();
+                let target = if self.filter.active() {
+                    visible_in(&self.visible, r.start, r.len()).last().copied()
+                } else {
+                    r.end.checked_sub(1)
+                };
                 if let Some(i) = target {
                     self.jump(i, now);
                 }
             }
+            KeyCode::Enter | KeyCode::NumpadEnter if pressed => self.toggle_lock(),
             KeyCode::Space if pressed && shift => self.edit_burst_mark(BurstMark::toggle_retained),
             KeyCode::Space if pressed => self.edit_mark(Mark::toggle_retained),
             KeyCode::F1 if pressed => self.toggle_color(Color::Red),
@@ -396,6 +427,8 @@ impl App {
             KeyCode::F4 if pressed => self.toggle_color(Color::Blue),
             KeyCode::F5 if pressed => self.toggle_color(Color::Purple),
             KeyCode::F11 if pressed => self.toggle_fullscreen(),
+            // Échap débloque d'abord la rafale, plutôt que de fermer Rafale.
+            KeyCode::Escape if pressed && self.locked.is_some() => self.toggle_lock(),
             KeyCode::Escape if pressed => event_loop.exit(),
             _ => {}
         }
@@ -715,7 +748,8 @@ impl App {
         }
     }
 
-    /// Début de la rafale précédente ou suivante (qui a des images visibles).
+    /// Début de la rafale précédente ou suivante (qui a des images visibles) ;
+    /// une rafale bloquée cède la place à celle-là, bloquée à son tour.
     fn burst_step(&mut self, dir: isize, now: Instant) {
         let Some(&b) = self.burst_of.get(self.cur) else {
             return;
@@ -725,6 +759,9 @@ impl App {
             t = next;
             let burst = &self.bursts[t];
             if let Some(i) = self.first_visible_in(burst.start, burst.len) {
+                if self.locked.is_some() {
+                    self.locked = Some(t);
+                }
                 return self.jump(i, now);
             }
         }
@@ -882,6 +919,9 @@ impl App {
             Widget::ClearFilter => f = Filter::default(),
             Widget::Bursts | Widget::Flat => {
                 self.flat = widget == Widget::Flat;
+                if self.flat_view() {
+                    self.locked = None;
+                }
                 self.flat_chosen = true;
                 self.list_offset = 0;
                 return;
@@ -1098,8 +1138,9 @@ impl App {
             Line {
                 text: match self.burst_of.get(self.cur) {
                     Some(&b) => format!(
-                        "Rafale {}   vue {} / {}{}",
+                        "Rafale {}{}   vue {} / {}{}",
                         b + 1,
+                        if self.locked == Some(b) { " bloquée" } else { "" },
                         self.cur - self.bursts[b].start + 1,
                         self.bursts[b].len,
                         self.bursts[b].rate.map(|r| format!("   {}", panel::format_rate(r))).unwrap_or_default()
@@ -1223,6 +1264,7 @@ impl App {
     /// Liste autour de la ligne courante (rafales, ou rangées de photos en vue à
     /// plat) ; recomposée seulement si elle change.
     fn update_list(&mut self) {
+        let members = self.locked.map(|b| self.burst_members(self.bursts[b].start)).unwrap_or_default();
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -1230,31 +1272,44 @@ impl App {
         let (lx, ly) = renderer.list_origin();
         let (_, wh) = renderer.window_size();
         let height = (wh - ly).max(0.0) as u32;
-        let status = if self.scanned < self.files.len() {
+        let locked = self.locked;
+        let mut status = if self.scanned < self.files.len() {
             format!("Analyse des rafales…  {} / {}", self.scanned, self.files.len())
         } else {
             String::new()
         };
-        // Ligne d'état en haut (pendant l'analyse), filtre et boutons en bas.
-        let status_h = if status.is_empty() { 0.0 } else { panel::PADDING };
+        // Ligne d'état en haut (pendant l'analyse, ou rafale bloquée), filtre et boutons en bas.
+        let status_h = if status.is_empty() && locked.is_none() { 0.0 } else { panel::PADDING };
         let header = panel::BOTTOM_BAR + status_h;
         let flat = self.flat && self.files.len() < FLAT_MAX;
-        let row_h = if flat { Panel::grid_row_height(width) } else { Panel::row_height(width) };
+        // Grille de photos : vue à plat, ou vues de la rafale bloquée.
+        let grid = flat || locked.is_some();
+        let row_h = if grid { Panel::grid_row_height(width) } else { Panel::row_height(width) };
         self.list_row_h = row_h;
         let fit = ((height as f32 - header) / row_h).max(0.0) as isize;
         let filtering = self.filter.active();
         let per = panel::THUMBS_PER_ROW;
 
-        // Vue à plat : les photos visibles, par rangées. Sinon : les rafales qui
-        // ont au moins une image visible.
-        let photos: Vec<usize> = if !flat {
+        // Rafale bloquée : ses vues visibles, toutes si elles tiennent, sinon
+        // régulièrement espacées. Vue à plat : les photos visibles, par rangées.
+        // Sinon : les rafales qui ont au moins une image visible.
+        let photos: Vec<usize> = if let Some(b) = locked {
+            let room = fit.max(1) as usize * per;
+            let shown = if members.len() > room { panel::spread(&members, room) } else { members.clone() };
+            status = if shown.len() < members.len() {
+                format!("Rafale {} bloquée · {} vues sur {} · Entrée pour débloquer", b + 1, shown.len(), members.len())
+            } else {
+                format!("Rafale {} bloquée · Entrée pour débloquer", b + 1)
+            };
+            shown
+        } else if !flat {
             Vec::new()
         } else if filtering {
             self.visible.clone()
         } else {
             (0..self.files.len()).collect()
         };
-        let listed: Vec<usize> = if flat {
+        let listed: Vec<usize> = if grid {
             Vec::new()
         } else {
             (0..self.bursts.len())
@@ -1262,12 +1317,12 @@ impl App {
                 .collect()
         };
         let cur_burst = self.burst_of.get(self.cur).copied();
-        let (total, cur_pos) = if flat {
+        let (total, cur_pos) = if grid {
             (photos.len().div_ceil(per), photos.partition_point(|&i| i < self.cur) / per)
         } else {
             (listed.len(), cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)))
         };
-        let group = Some((flat, cur_pos));
+        let group = Some((grid, cur_pos));
         if group != self.list_group {
             self.list_group = group;
             self.list_offset = 0;
@@ -1278,14 +1333,18 @@ impl App {
         let first = (anchor + self.list_offset).clamp(0, last_first);
         self.list_offset = first - anchor;
         let lines = first as usize..(first + fit).min(total as isize).max(first) as usize;
-        let entries: Vec<Entry> = if flat {
+        let entries: Vec<Entry> = if grid {
+            // Vues espacées : chaque vignette tient lieu des vues jusqu'à la suivante,
+            // et prend le cadre quand on les parcourt.
+            let end = locked.map_or(0, |b| self.bursts[b].range().end);
             lines
                 .map(|r| {
-                    let cells = photos[r * per..((r + 1) * per).min(photos.len())]
-                        .iter()
-                        .map(|&index| {
+                    let cells = (r * per..((r + 1) * per).min(photos.len()))
+                        .map(|k| {
+                            let index = photos[k];
+                            let span = if locked.is_some() { photos.get(k + 1).copied().unwrap_or(end) - index } else { 1 };
                             let m = &self.marks[index];
-                            Cell { index, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
+                            Cell { index, span, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
                         })
                         .collect();
                     Entry::Photos(cells)
@@ -1307,7 +1366,7 @@ impl App {
                         start: b.start,
                         len: b.len,
                         shown: filtering.then_some(indices.len()),
-                        picks: panel::spread(indices),
+                        picks: panel::spread(indices, panel::THUMBS_PER_ROW),
                         first: indices[0],
                         number: i + 1,
                         rate: b.rate,
@@ -1498,7 +1557,8 @@ impl App {
             Some(Job { index, .. }) if index == self.cur => "  · réduit",
             _ => "  · chargement…",
         };
-        let title = format!("{name}  {}/{}{mark}{quality}", self.cur + 1, self.files.len());
+        let locked = self.locked.map(|b| format!("  · rafale {} bloquée", b + 1)).unwrap_or_default();
+        let title = format!("{name}  {}/{}{mark}{locked}{quality}", self.cur + 1, self.files.len());
         // set_title redessine les décorations, ce qui relance la boucle : seulement si changé.
         if title != self.title {
             window.set_title(&title);

@@ -131,6 +131,9 @@ pub struct Row {
 #[derive(Debug, PartialEq)]
 pub struct Cell {
     pub index: usize,
+    /// Photos dont la vignette tient lieu, à partir de `index` (vues espacées
+    /// d'une rafale bloquée) : le cadre s'y place quand on les parcourt.
+    pub span: usize,
     pub rating: u8,
     pub rejected: bool,
     /// Retenue (✓).
@@ -677,7 +680,7 @@ impl Panel {
                         self.draw_thumb(&mut canvas, cell.index, x, top, tw, th, metas);
                         canvas.badges(x, top, tw as f32, cell);
                         let cell_box = Some((x, top, tw as f32, th as f32));
-                        tracks.push(Track { start: cell.index, len: 1, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
+                        tracks.push(Track { start: cell.index, len: cell.span, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
                         hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
                     }
                     y += Self::grid_row_height(width);
@@ -726,9 +729,9 @@ impl Panel {
     }
 }
 
-/// Images de la rafale dont on montre la vignette : réparties de la première à la dernière.
-pub fn spread(indices: &[usize]) -> Vec<usize> {
-    let n = THUMBS_PER_ROW.min(indices.len());
+/// `n` images au plus, réparties de la première à la dernière.
+pub fn spread(indices: &[usize], n: usize) -> Vec<usize> {
+    let n = n.min(indices.len());
     (0..n)
         .map(|k| if n == 1 { indices[0] } else { indices[k * (indices.len() - 1) / (n - 1)] })
         .collect()
