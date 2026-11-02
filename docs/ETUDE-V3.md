@@ -90,9 +90,17 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 | 2 | Rafale bloquée : défilé limité, ↑ ↓ en restant bloqué, grille de vignettes espacées |
 | 3 | Règles de cohérence : retenue automatique de la rafale, ⚠ dans la liste et le panneau, confirmation à la copie et à « Retoucher… » |
 | 4 | Corbeille d'une rafale bloquée et rejetée |
-| 5 | Aide, guide et conception à jour ; version 3.0.0 |
+| 5 | Finitions (section 8) ; aide, guide et conception à jour ; version 3.0.0 |
 
 ## 7. Points tranchés
 
 - Filtres sur les rafales (n'afficher que les rafales retenues, ou notées X ou plus) : utile au second passage, à ajouter seulement si le filtre des photos ne suffit pas (décidé).
 - La note de la rafale n'est pas exportée vers les autres logiciels (décidé) : elle sert au tri dans Rafale.
+- Échap débloque la rafale bloquée au lieu de fermer Rafale (décidé à l'étape 2).
+- Rejeter une rafale efface sa note et sa coche, comme pour une photo ; la noter ou la cocher lève le rejet (décidé à l'étape 1).
+- Le marquage et le blocage des rafales attendent la fin de l'analyse des en-têtes, qui fixe les bornes des rafales (décidé à l'étape 1).
+
+## 8. À peaufiner à la fin
+
+- **Cases ✓ et ✕ lisibles décochées** : pour la photo comme pour la rafale, une case non cochée montre sa coche ou sa croix en gris, pour qu'on les distingue sans les cocher.
+- **Mode en cours bien visible dans le panneau de droite** : rafale bloquée ou non, avec un symbole distinct et assez voyant pour s'en rendre compte d'un coup d'œil.
