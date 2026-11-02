@@ -32,7 +32,18 @@ Question : une interface en vrais widgets GNOME ralentirait-elle le défilé ? E
 | 50 i/s | 50,0 ; intervalles 20,0 ms, 0 à-coup | 50,0 ; intervalles 24 ms (p95 27, max 36), 3 à 5 à-coups sur 220 |
 | 60 i/s | 60,0 ; intervalles 16,7 ms, 0 à-coup | 60,0 en moyenne, mais 86 à 102 à-coups sur 264 (p95 29 ms) |
 
-Pleine résolution, processeur et mémoire : équivalents. Conclusion provisoire : à 25 i/s, GTK ne ralentit pas ; il a moins de marge à cadence élevée. L'aspect GNOME plaît. À trancher après un essai sur le M7 Ultra (processeur bridé), avec les mêmes commandes sur la branche `essai-gtk4`.
+Pleine résolution, processeur et mémoire : équivalents. Conclusion provisoire : à 25 i/s, GTK ne ralentit pas ; il a moins de marge à cadence élevée. L'aspect GNOME plaît.
+
+Essai sur le M7 Ultra (Ryzen 5 7640HS, Radeon 760M intégrée, même écran 144 Hz), 2 novembre 2026, mêmes commandes, deux passes par cadence plus 30 s à 25 i/s :
+
+| Cadence visée | winit + wgpu (3.0.0-dev) | GTK4 + libadwaita |
+|---|---|---|
+| 25 i/s | 25,0 ; intervalles 40,0 ms, 0 à-coup | 25,0 ; médian 41,5 à 41,8 ms (p95 42 à 43, max 54 à 55), 0 à-coup |
+| 50 i/s | 50,0 ; intervalles 20,0 ms (max 20,5), 0 à-coup | 49,9 à 50,0 ; médian 21,6 à 24,3 ms (p95 28, max 36), 9 à-coups sur 220 |
+| 30 s à 25 i/s | 25,0 ; 40,0 ms, 0 à-coup sur 734 | 25,0 ; médian 41,5 ms (max 54), 0 à-coup sur 734 |
+| Pleine résolution | 291 à 294 ms | 233 à 242 ms |
+
+Aucun ralentissement à la chauffe sur 30 s. Le processeur bridé tient le défilé dans les deux versions ; GTK reste un peu moins régulier à 50 i/s, mais 9 à-coups sur 220 ne se remarquent pas, et sa pleine résolution arrive plus vite. Conclusion : **GTK est viable aussi sur le M7 Ultra**.
 
 Effet de bord de l'essai : les « flashs » au début de la séance venaient d'exports (digiKam `_v1`, darktable `-1`) intercalés dans le défilé et d'une photo écrasée par un recadrage de gThumb (PA290088, restaurée depuis le SSD) ; rangés dans `exports/`.
 
