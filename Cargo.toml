@@ -1,6 +1,6 @@
 [package]
 name = "rafale-viewer"
-version = "3.0.0-dev"
+version = "3.0.0"
 edition = "2024"
 license = "MIT"
 description = "Visionneur pour trier vite de longues rafales de JPEG"
