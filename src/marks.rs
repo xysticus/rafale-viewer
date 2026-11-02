@@ -13,6 +13,9 @@
 //! Un XMP écrit par un autre logiciel (darktable y range son historique de
 //! retouches, par exemple) est lu mais jamais réécrit, sauf s'il est vierge :
 //! ni note, ni couleur, ni retouche, comme ceux que darktable pose à l'import.
+//!
+//! Le marquage des rafales, propre à Rafale, va dans un petit fichier texte par
+//! rafale marquée, `PREMIERE-DERNIERE.rafale`, dans le dossier de la séance.
 
 use std::path::{Path, PathBuf};
 
@@ -276,6 +279,119 @@ pub fn save_to(path: &Path, mark: &Mark) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// Marquage d'une rafale, indépendant de celui de ses photos : note, retenue,
+/// rejet, avec les mêmes règles que pour une photo (rejeter efface la note et
+/// la coche ; noter ou cocher lève le rejet).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BurstMark {
+    pub rating: u8,
+    pub picked: bool,
+    pub rejected: bool,
+}
+
+impl BurstMark {
+    pub fn retained(&self) -> bool {
+        !self.rejected && self.picked
+    }
+
+    pub fn toggle_retained(&mut self) {
+        self.picked = !self.retained();
+        self.rejected = false;
+    }
+
+    pub fn toggle_rejected(&mut self) {
+        self.rejected = !self.rejected;
+        self.rating = 0;
+        self.picked = false;
+    }
+
+    pub fn set_rating(&mut self, stars: u8) {
+        self.rating = stars;
+        self.rejected = false;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rating == 0 && !self.picked && !self.rejected
+    }
+}
+
+/// Extension des fichiers de marquage des rafales.
+pub const BURST_EXT: &str = "rafale";
+const BURST_FORMAT: &str = "rafale-viewer 3";
+
+/// Fichier `PREMIERE-DERNIERE.rafale` lu dans le dossier de la séance.
+#[derive(Debug, PartialEq)]
+pub struct BurstFile {
+    pub path: PathBuf,
+    /// Noms de la première et de la dernière vue (`PA290128.JPG`).
+    pub first: String,
+    pub last: String,
+    pub mark: BurstMark,
+}
+
+/// Lit un fichier `.rafale` (format clé = valeur, modifiable à la main).
+pub fn load_burst(path: &Path) -> Option<BurstFile> {
+    let text = std::fs::read_to_string(path).ok()?;
+    if !text.contains(CREATOR) {
+        return None;
+    }
+    let mut file = BurstFile { path: path.to_path_buf(), first: String::new(), last: String::new(), mark: BurstMark::default() };
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else { continue };
+        let value = value.trim();
+        let yes = value.eq_ignore_ascii_case("oui");
+        match key.trim() {
+            "premiere" => file.first = value.to_string(),
+            "derniere" => file.last = value.to_string(),
+            "note" => file.mark.rating = value.parse::<u8>().unwrap_or(0).min(5),
+            "retenue" => file.mark.picked = yes,
+            "rejetee" => file.mark.rejected = yes,
+            _ => {}
+        }
+    }
+    if file.mark.rejected {
+        file.mark.rating = 0;
+        file.mark.picked = false;
+    }
+    (!file.first.is_empty() || !file.last.is_empty()).then_some(file)
+}
+
+/// Enregistre le marquage de la rafale `first`..`last` (`len` vues) dans son
+/// fichier `.rafale`, nommé d'après ses bornes ; l'ancien fichier `old` est
+/// supprimé s'il porte un autre nom (bornes changées), ou si le marquage est
+/// vide. Renvoie le fichier qui porte désormais le marquage.
+pub fn save_burst(old: Option<&Path>, first: &Path, last: &Path, len: usize, mark: &BurstMark) -> std::io::Result<Option<PathBuf>> {
+    let name = |p: &Path| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let stem = |p: &Path| p.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let dir = first.parent().unwrap_or(Path::new(""));
+    let path = dir.join(format!("{}-{}.{BURST_EXT}", stem(first), stem(last)));
+    let remove_old = |keep: Option<&Path>| match old.filter(|o| Some(*o) != keep) {
+        Some(o) if is_ours(o) => match std::fs::remove_file(o) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+        _ => Ok(()),
+    };
+    if mark.is_empty() {
+        remove_old(None)?;
+        return Ok(None);
+    }
+    let yes = |b: bool| if b { "oui" } else { "non" };
+    let text = format!(
+        "{BURST_FORMAT}\npremiere = {}\nderniere = {}\nvues = {len}\nnote = {}\nretenue = {}\nrejetee = {}\n",
+        name(first),
+        name(last),
+        mark.rating,
+        yes(mark.picked),
+        yes(mark.rejected),
+    );
+    let tmp = path.with_extension("rafale.tmp");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, &path)?;
+    remove_old(Some(&path))?;
+    Ok(Some(path))
+}
+
 /// Valeur d'une propriété XMP, en attribut (`nom="v"`) ou en élément (`<nom>v</nom>`).
 fn value<'a>(text: &'a str, name: &str) -> Option<&'a str> {
     let attr = format!("{name}=\"");
@@ -419,6 +535,46 @@ mod tests {
         // digiKam, lui, a vraiment choisi.
         std::fs::write(sidecar(&photo), r#"<x:xmpmeta><rdf:Description xmp:Rating="2" digiKam:PickLabel="3"/></x:xmpmeta>"#).unwrap();
         assert!(load(&photo).picked);
+    }
+
+    #[test]
+    fn fichier_rafale() {
+        let first = temp_photo("rafale");
+        let dir = first.parent().unwrap().to_path_buf();
+        let last = dir.join("P0015.JPG");
+        let mark = BurstMark { rating: 3, picked: true, rejected: false };
+        let path = save_burst(None, &first, &last, 15, &mark).unwrap().unwrap();
+        assert_eq!(path, dir.join("P0001-P0015.rafale"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("rafale-viewer 3\npremiere = P0001.JPG\nderniere = P0015.JPG\nvues = 15\n"), "{text}");
+        let file = load_burst(&path).unwrap();
+        assert_eq!((file.first.as_str(), file.last.as_str(), file.mark), ("P0001.JPG", "P0015.JPG", mark));
+
+        // Bornes changées (première vue supprimée) : renommé à l'écriture.
+        let second = dir.join("P0002.JPG");
+        let moved = save_burst(Some(&path), &second, &last, 14, &mark).unwrap().unwrap();
+        assert_eq!(moved, dir.join("P0002-P0015.rafale"));
+        assert!(!path.exists());
+
+        // Marquage effacé : plus de fichier.
+        assert_eq!(save_burst(Some(&moved), &second, &last, 14, &BurstMark::default()).unwrap(), None);
+        assert!(!moved.exists());
+    }
+
+    #[test]
+    fn fichier_rafale_modifie_a_la_main() {
+        let photo = temp_photo("rafale-main");
+        let path = photo.with_file_name("A-B.rafale");
+        std::fs::write(&path, "rafale-viewer 3\n  premiere=P0001.JPG\nnote = 9\nretenue = OUI\nautre = x\n").unwrap();
+        let file = load_burst(&path).unwrap();
+        assert_eq!((file.first.as_str(), file.last.as_str()), ("P0001.JPG", ""));
+        assert_eq!(file.mark, BurstMark { rating: 5, picked: true, rejected: false });
+        // Rejetée : la note et la coche n'ont plus cours, comme pour une photo.
+        std::fs::write(&path, "rafale-viewer 3\npremiere = P0001.JPG\nnote = 2\nretenue = oui\nrejetee = oui\n").unwrap();
+        assert_eq!(load_burst(&path).unwrap().mark, BurstMark { rejected: true, ..Default::default() });
+        // Pas de signature : pas un fichier de Rafale.
+        std::fs::write(&path, "premiere = P0001.JPG\n").unwrap();
+        assert!(load_burst(&path).is_none());
     }
 
     #[test]

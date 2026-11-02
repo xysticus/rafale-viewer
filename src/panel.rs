@@ -9,7 +9,7 @@ use fontdue::{Font, FontSettings};
 use lru::LruCache;
 use turbojpeg::{Decompressor, Image, PixelFormat};
 
-use crate::marks::Color;
+use crate::marks::{BurstMark, Color};
 use crate::meta::Meta;
 
 pub const PADDING: f32 = 24.0;
@@ -22,6 +22,8 @@ const MARKED: [u8; 3] = [110, 210, 120];
 /// Rangée de commandes (étoiles, couleurs, coche, rejet).
 const CTRL: f32 = 22.0;
 const CTRL_GAP: f32 = 18.0;
+/// Écart entre la rangée de la photo et celle de sa rafale.
+const BURST_ROW_GAP: f32 = 10.0;
 const STAR_ON: [u8; 3] = [235, 190, 60];
 const OFF: [u8; 3] = [85, 85, 85];
 const CHECK_ON: [u8; 3] = [80, 175, 85];
@@ -39,6 +41,10 @@ pub enum Widget {
     Color(Color),
     Check,
     Reject,
+    /// Marquage de la rafale affichée (rangée « Rafale » du panneau).
+    BurstStar(u8),
+    BurstCheck,
+    BurstReject,
     ClearFilter,
     /// Photo de la liste (début de rafale, ou vignette en mode à plat).
     Photo(usize),
@@ -115,6 +121,8 @@ pub struct Row {
     /// Rythme mesuré, en images/s.
     pub rate: Option<f32>,
     pub marked: usize,
+    /// Marquage de la rafale elle-même.
+    pub mark: BurstMark,
     /// Rafale de l'image courante.
     pub current: bool,
 }
@@ -271,13 +279,7 @@ impl Canvas {
     /// Rangée de commandes à partir de (x, y) ; renvoie les zones cliquables.
     fn controls(&mut self, x: f32, y: f32, c: &Controls) -> Vec<Hit> {
         let mut hits = Vec::with_capacity(12);
-        let mut x = x;
-        for n in 1..=5u8 {
-            let rgb = if n <= c.rating { STAR_ON } else { OFF };
-            self.star(x, y, CTRL, rgb);
-            hits.push(Hit { widget: Widget::Star(n), x, y, w: CTRL + 2.0, h: CTRL });
-            x += CTRL + 2.0;
-        }
+        let mut x = self.stars(x, y, c.rating, Widget::Star, &mut hits);
         x += CTRL_GAP;
         let chip = CTRL - 4.0;
         for color in Color::ALL {
@@ -291,6 +293,25 @@ impl Canvas {
             x += CTRL + 4.0;
         }
         x += CTRL_GAP;
+        self.check_reject(x, y, c, Widget::Check, Widget::Reject, &mut hits);
+        hits
+    }
+
+    /// Cinq étoiles cliquables à partir de (x, y) ; renvoie l'abscisse de fin.
+    fn stars(&mut self, x: f32, y: f32, rating: u8, widget: fn(u8) -> Widget, hits: &mut Vec<Hit>) -> f32 {
+        let mut x = x;
+        for n in 1..=5u8 {
+            let rgb = if n <= rating { STAR_ON } else { OFF };
+            self.star(x, y, CTRL, rgb);
+            hits.push(Hit { widget: widget(n), x, y, w: CTRL + 2.0, h: CTRL });
+            x += CTRL + 2.0;
+        }
+        x
+    }
+
+    /// Cases ✓ et ✕ à partir de (x, y).
+    fn check_reject(&mut self, x: f32, y: f32, c: &Controls, check: Widget, reject: Widget, hits: &mut Vec<Hit>) {
+        let mut x = x;
         let s = CTRL;
         if c.check {
             self.rect(x, y, s, s, CHECK_ON, 1.0);
@@ -299,7 +320,7 @@ impl Canvas {
         } else {
             self.frame(x, y, s, 2.0, OFF);
         }
-        hits.push(Hit { widget: Widget::Check, x, y, w: s, h: s });
+        hits.push(Hit { widget: check, x, y, w: s, h: s });
         x += s + 8.0;
         if c.reject {
             self.rect(x, y, s, s, REJECT_ON, 1.0);
@@ -309,8 +330,32 @@ impl Canvas {
         } else {
             self.frame(x, y, s, 2.0, OFF);
         }
-        hits.push(Hit { widget: Widget::Reject, x, y, w: s, h: s });
-        hits
+        hits.push(Hit { widget: reject, x, y, w: s, h: s });
+    }
+
+    /// Marquage d'une rafale dans sa ligne de la liste, aligné à droite sur
+    /// `right` : étoiles puis ✓, ou ✕ ; renvoie l'abscisse de début.
+    fn burst_badges(&mut self, right: f32, y: f32, m: &BurstMark) -> f32 {
+        let s = 14.0;
+        if m.rejected {
+            let x = right - s;
+            self.rect(x, y, s, s, REJECT_ON, 1.0);
+            let (a, b) = (s * 0.28, s * 0.72);
+            self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.0, [255, 255, 255]);
+            self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.0, [255, 255, 255]);
+            return x;
+        }
+        let mut x = right;
+        if m.picked {
+            x -= s;
+            self.check(x, y, s);
+            x -= 6.0;
+        }
+        for _ in 0..m.rating {
+            x -= 13.0;
+            self.star(x, y + 1.0, 12.0, STAR_ON);
+        }
+        x
     }
 
     /// Bouton d'action destructrice : contour et texte rouges ; renvoie sa largeur.
@@ -449,12 +494,14 @@ impl Panel {
         }
     }
 
-    /// Rend la rangée de commandes puis les lignes d'informations, en largeur `width`.
-    pub fn render_info(&self, width: u32, controls: &Controls, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
+    /// Rend la rangée de commandes de la photo, celle de sa rafale (`burst`, si
+    /// son marquage est possible), puis les lignes d'informations, en largeur `width`.
+    pub fn render_info(&self, width: u32, controls: &Controls, burst: Option<&Controls>, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
         let Some(font) = &self.font else {
             return (vec![0; 4], 1, 1, Vec::new());
         };
-        let mut y = PADDING + CTRL + 6.0;
+        let burst_y = PADDING + CTRL + BURST_ROW_GAP;
+        let mut y = if burst.is_some() { burst_y + CTRL } else { PADDING + CTRL } + 6.0;
         let mut baselines = Vec::with_capacity(lines.len());
         for line in lines {
             let m = font.horizontal_line_metrics(line.size).unwrap();
@@ -465,7 +512,15 @@ impl Panel {
         // Double trait en bas : sépare les informations de la liste des rafales.
         let height = (y + PADDING / 2.0 + 10.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
-        let hits = canvas.controls(PADDING, PADDING, controls);
+        let mut hits = canvas.controls(PADDING, PADDING, controls);
+        if let Some(c) = burst {
+            // « Rafale » puis ses étoiles ; ✓ et ✕ sous ceux de la photo.
+            canvas.text(font, PADDING, burst_y + 16.0, width as f32, "Rafale", 15.0, [150, 150, 150]);
+            let label: f32 = "Rafale".chars().map(|ch| font.metrics(ch, 15.0).advance_width).sum();
+            canvas.stars(PADDING + label + 10.0, burst_y, c.rating, Widget::BurstStar, &mut hits);
+            let check_x = hits.iter().find(|h| h.widget == Widget::Check).map_or(PADDING, |h| h.x);
+            canvas.check_reject(check_x, burst_y, c, Widget::BurstCheck, Widget::BurstReject, &mut hits);
+        }
         for dy in [7.0, 3.0] {
             canvas.rect(PADDING / 2.0, height as f32 - dy, width as f32 - PADDING, 1.0, [255, 255, 255], 0.22);
         }
@@ -593,10 +648,13 @@ impl Panel {
                     };
                     let header = format!("Rafale {}   {clock}   {count}{rate}", row.number);
                     let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
-                    canvas.text(&font, PADDING, top + 18.0, max_x, &header, 15.0, color);
+                    // À droite : marquage de la rafale, puis nombre de photos retenues.
+                    let count_x = width as f32 - PADDING - 40.0;
+                    let badges = canvas.burst_badges(count_x - 10.0, top + 5.0, &row.mark);
+                    canvas.text(&font, PADDING, top + 18.0, badges - 8.0, &header, 15.0, color);
                     if row.marked > 0 {
                         // Coche dessinée : nombre de photos retenues dans la rafale.
-                        let x = width as f32 - PADDING - 40.0;
+                        let x = count_x;
                         canvas.check(x, top + 5.0, 14.0);
                         canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
                     }
