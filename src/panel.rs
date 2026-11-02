@@ -28,6 +28,8 @@ const STAR_ON: [u8; 3] = [235, 190, 60];
 const OFF: [u8; 3] = [85, 85, 85];
 const CHECK_ON: [u8; 3] = [80, 175, 85];
 const REJECT_ON: [u8; 3] = [205, 70, 60];
+/// Signalement d'une rafale (règle de cohérence non respectée).
+pub const WARNING: [u8; 3] = [240, 170, 60];
 /// Hauteur de la barre de filtre, puis de la ligne de boutons (vue, aide), en bas de la liste.
 const FILTER_BAR: f32 = CTRL + 16.0;
 const BUTTON_H: f32 = 24.0;
@@ -98,6 +100,7 @@ impl Hit {
 }
 
 pub struct Line {
+    /// Texte ; un « ⚠ » en tête (absent de la police) est dessiné.
     pub text: String,
     pub size: f32,
     /// Couleur sRGB.
@@ -123,6 +126,8 @@ pub struct Row {
     pub marked: usize,
     /// Marquage de la rafale elle-même.
     pub mark: BurstMark,
+    /// Règle de cohérence non respectée (⚠).
+    pub warn: bool,
     /// Rafale de l'image courante.
     pub current: bool,
 }
@@ -336,6 +341,15 @@ impl Canvas {
         hits.push(Hit { widget: reject, x, y, w: s, h: s });
     }
 
+    /// Triangle d'avertissement (⚠) dans le carré (x, y, s).
+    fn warning(&mut self, x: f32, y: f32, s: f32) {
+        let pts = [(x + s / 2.0, y), (x + s, y + s * 0.92), (x, y + s * 0.92)];
+        self.shape(x, y, s, s, WARNING, 1.0, |px, py| point_in_polygon((px, py), &pts));
+        let w = (s * 0.14).max(1.5);
+        self.rect(x + (s - w) / 2.0, y + s * 0.3, w, s * 0.34, [30, 30, 30], 1.0);
+        self.rect(x + (s - w) / 2.0, y + s * 0.71, w, w, [30, 30, 30], 1.0);
+    }
+
     /// Marquage d'une rafale dans sa ligne de la liste, aligné à droite sur
     /// `right` : étoiles puis ✓, ou ✕ ; renvoie l'abscisse de début.
     fn burst_badges(&mut self, right: f32, y: f32, m: &BurstMark) -> f32 {
@@ -529,7 +543,14 @@ impl Panel {
         }
         let max_x = width as f32 - PADDING / 2.0;
         for (line, &baseline) in lines.iter().zip(&baselines) {
-            canvas.text(font, PADDING, baseline, max_x, &line.text, line.size, line.color);
+            match line.text.strip_prefix('⚠') {
+                Some(rest) => {
+                    let s = line.size;
+                    canvas.warning(PADDING, baseline - s * 0.85, s);
+                    canvas.text(font, PADDING + s + 4.0, baseline, max_x, rest.trim_start(), line.size, line.color);
+                }
+                None => canvas.text(font, PADDING, baseline, max_x, &line.text, line.size, line.color),
+            }
         }
         (canvas.pixels, width, height, hits)
     }
@@ -653,7 +674,11 @@ impl Panel {
                     let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
                     // À droite : marquage de la rafale, puis nombre de photos retenues.
                     let count_x = width as f32 - PADDING - 40.0;
-                    let badges = canvas.burst_badges(count_x - 10.0, top + 5.0, &row.mark);
+                    let mut badges = canvas.burst_badges(count_x - 10.0, top + 5.0, &row.mark);
+                    if row.warn {
+                        badges -= 20.0;
+                        canvas.warning(badges, top + 4.0, 16.0);
+                    }
                     canvas.text(&font, PADDING, top + 18.0, badges - 8.0, &header, 15.0, color);
                     if row.marked > 0 {
                         // Coche dessinée : nombre de photos retenues dans la rafale.
