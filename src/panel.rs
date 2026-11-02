@@ -28,6 +28,8 @@ const STAR_ON: [u8; 3] = [235, 190, 60];
 const OFF: [u8; 3] = [85, 85, 85];
 const CHECK_ON: [u8; 3] = [80, 175, 85];
 const REJECT_ON: [u8; 3] = [205, 70, 60];
+/// Rafale bloquée : bandeau et cadenas.
+const LOCKED: [u8; 3] = [70, 140, 240];
 /// Signalement d'une rafale (règle de cohérence non respectée).
 pub const WARNING: [u8; 3] = [240, 170, 60];
 /// Hauteur de la barre de filtre, puis de la ligne de boutons (vue, aide), en bas de la liste.
@@ -157,6 +159,8 @@ pub enum Entry {
 /// que pour les petits dossiers).
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
+    /// Rafale bloquée : la ligne d'état devient un bandeau, avec un cadenas.
+    pub locked: bool,
     pub flat_available: bool,
     pub flat: bool,
     pub copy_kind: CopyKind,
@@ -326,7 +330,10 @@ impl Canvas {
             let pts = [(x + s * 0.24, y + s * 0.52), (x + s * 0.43, y + s * 0.72), (x + s * 0.78, y + s * 0.3)];
             self.polyline(&pts, 2.6, [255, 255, 255]);
         } else {
+            // Décochée : la coche reste visible en gris, pour la distinguer de la croix.
             self.frame(x, y, s, 2.0, OFF);
+            let pts = [(x + s * 0.24, y + s * 0.52), (x + s * 0.43, y + s * 0.72), (x + s * 0.78, y + s * 0.3)];
+            self.polyline(&pts, 2.2, OFF);
         }
         hits.push(Hit { widget: check, x, y, w: s, h: s });
         x += s + 8.0;
@@ -337,8 +344,28 @@ impl Canvas {
             self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.6, [255, 255, 255]);
         } else {
             self.frame(x, y, s, 2.0, OFF);
+            let (a, b) = (s * 0.3, s * 0.7);
+            self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.2, OFF);
+            self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.2, OFF);
         }
         hits.push(Hit { widget: reject, x, y, w: s, h: s });
+    }
+
+    /// Cadenas fermé (rafale bloquée) dans le carré (x, y, s).
+    fn padlock(&mut self, x: f32, y: f32, s: f32, rgb: [u8; 3]) {
+        let body_y = y + s * 0.45;
+        self.rect(x + s * 0.12, body_y, s * 0.76, s * 0.55, rgb, 1.0);
+        let (cx, r) = (x + s / 2.0, s * 0.24);
+        let arc: Vec<(f32, f32)> = (0..=12)
+            .map(|k| {
+                let a = std::f32::consts::PI * k as f32 / 12.0;
+                (cx - r * a.cos(), y + s * 0.3 - r * a.sin() + r * 0.4)
+            })
+            .collect();
+        let mut pts = vec![(cx - r, body_y)];
+        pts.extend(arc);
+        pts.push((cx + r, body_y));
+        self.polyline(&pts, s * 0.13, rgb);
     }
 
     /// Triangle d'avertissement (⚠) dans le carré (x, y, s).
@@ -436,6 +463,17 @@ impl Canvas {
 
     /// Écrit `text` à partir de `x` sur la ligne de base `baseline` ; tronque à `max_x`.
     fn text(&mut self, font: &Font, x: f32, baseline: f32, max_x: f32, text: &str, size: f32, color: [u8; 3]) {
+        self.draw_text(font, x, baseline, max_x, text, size, color, false);
+    }
+
+    /// Texte composé par-dessus un fond déjà peint (bandeau).
+    #[allow(clippy::too_many_arguments)]
+    fn text_on(&mut self, font: &Font, x: f32, baseline: f32, max_x: f32, text: &str, size: f32, color: [u8; 3]) {
+        self.draw_text(font, x, baseline, max_x, text, size, color, true);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_text(&mut self, font: &Font, x: f32, baseline: f32, max_x: f32, text: &str, size: f32, color: [u8; 3], on_background: bool) {
         let mut x = x;
         for ch in text.chars() {
             let (m, coverage) = font.rasterize(ch, size);
@@ -452,9 +490,14 @@ impl Canvas {
                     }
                     let a = coverage[row * m.width + col];
                     let i = 4 * (py as usize * self.width + px as usize);
-                    if a > self.pixels[i + 3] {
-                        self.pixels[i..i + 3].copy_from_slice(&color);
-                        self.pixels[i + 3] = a;
+                    if self.pixels[i + 3] > 0 && !on_background {
+                        // Bord d'une lettre voisine : la plus couvrante l'emporte.
+                        if a > self.pixels[i + 3] {
+                            self.pixels[i..i + 3].copy_from_slice(&color);
+                            self.pixels[i + 3] = a;
+                        }
+                    } else {
+                        self.blend(px as usize, py as usize, color, a as f32 / 255.0);
                     }
                 }
             }
@@ -513,7 +556,7 @@ impl Panel {
 
     /// Rend la rangée de commandes de la photo, celle de sa rafale (`burst`, si
     /// son marquage est possible), puis les lignes d'informations, en largeur `width`.
-    pub fn render_info(&self, width: u32, controls: &Controls, burst: Option<&Controls>, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
+    pub fn render_info(&self, width: u32, controls: &Controls, burst: Option<&Controls>, locked: bool, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
         let Some(font) = &self.font else {
             return (vec![0; 4], 1, 1, Vec::new());
         };
@@ -531,10 +574,17 @@ impl Panel {
         let mut canvas = Canvas::new(width, height);
         let mut hits = canvas.controls(PADDING, PADDING, controls);
         if let Some(c) = burst {
-            // « Rafale » puis ses étoiles ; ✓ et ✕ sous ceux de la photo.
-            canvas.text(font, PADDING, burst_y + 16.0, width as f32, "Rafale", 15.0, [150, 150, 150]);
+            // « Rafale » (cadenas bleu devant, si elle est bloquée) puis ses
+            // étoiles ; ✓ et ✕ sous ceux de la photo.
+            let mut x = PADDING;
+            if locked {
+                canvas.padlock(x, burst_y + 1.0, 18.0, LOCKED);
+                x += 24.0;
+            }
+            let color = if locked { LOCKED } else { [150, 150, 150] };
+            canvas.text(font, x, burst_y + 16.0, width as f32, "Rafale", 15.0, color);
             let label: f32 = "Rafale".chars().map(|ch| font.metrics(ch, 15.0).advance_width).sum();
-            canvas.stars(PADDING + label + 10.0, burst_y, c.rating, Widget::BurstStar, &mut hits);
+            canvas.stars(x + label + 10.0, burst_y, c.rating, Widget::BurstStar, &mut hits);
             let check_x = hits.iter().find(|h| h.widget == Widget::Check).map_or(PADDING, |h| h.x);
             canvas.check_reject(check_x, burst_y, c, Widget::BurstCheck, Widget::BurstReject, &mut hits);
         }
@@ -649,7 +699,13 @@ impl Panel {
         }
 
         let mut y = 0.0;
-        if !status.is_empty() {
+        if view.locked {
+            // Bandeau bleu, cadenas : on voit d'un coup d'œil qu'on est dans une rafale.
+            canvas.rect(PADDING / 2.0, y, width as f32 - PADDING, ROW_HEADER - 2.0, LOCKED, 0.85);
+            canvas.padlock(PADDING, y + 3.0, 17.0, [255, 255, 255]);
+            canvas.text_on(&font, PADDING + 24.0, y + 17.0, max_x, status, 15.0, [255, 255, 255]);
+            y += ROW_HEADER;
+        } else if !status.is_empty() {
             canvas.text(&font, PADDING, y + 17.0, max_x, status, 15.0, [125, 125, 125]);
             y += ROW_HEADER;
         }
