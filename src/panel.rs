@@ -32,11 +32,13 @@ const REJECT_ON: [u8; 3] = [205, 70, 60];
 const LOCKED: [u8; 3] = [70, 140, 240];
 /// Signalement d'une rafale (règle de cohérence non respectée).
 pub const WARNING: [u8; 3] = [240, 170, 60];
-/// Hauteur de la barre de filtre, puis de la ligne de boutons (vue, aide), en bas de la liste.
+/// Hauteur de la barre de filtre des photos, puis de celle des rafales, puis de
+/// la ligne de boutons (vue, aide), en bas de la liste.
 const FILTER_BAR: f32 = CTRL + 16.0;
+const BURST_FILTER_BAR: f32 = CTRL + 8.0;
 const BUTTON_H: f32 = 24.0;
 const BUTTON_LINE: f32 = BUTTON_H + 8.0;
-pub const BOTTOM_BAR: f32 = FILTER_BAR + 2.0 * BUTTON_LINE + 6.0;
+pub const BOTTOM_BAR: f32 = FILTER_BAR + BURST_FILTER_BAR + 2.0 * BUTTON_LINE + 6.0;
 
 /// Élément cliquable du panneau.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,6 +51,9 @@ pub enum Widget {
     BurstStar(u8),
     BurstCheck,
     BurstReject,
+    /// Filtre des rafales (rangée « Rafales » de la barre de filtre).
+    FilterBurstStar(u8),
+    FilterBurstCheck,
     ClearFilter,
     /// Photo de la liste (début de rafale, ou vignette en mode à plat).
     Photo(usize),
@@ -323,9 +328,13 @@ impl Canvas {
 
     /// Cases ✓ et ✕ à partir de (x, y).
     fn check_reject(&mut self, x: f32, y: f32, c: &Controls, check: Widget, reject: Widget, hits: &mut Vec<Hit>) {
-        let mut x = x;
+        self.check_box(x, y, c.check, check, hits);
+        self.reject_box(x + CTRL + 8.0, y, c.reject, reject, hits);
+    }
+
+    fn check_box(&mut self, x: f32, y: f32, on: bool, check: Widget, hits: &mut Vec<Hit>) {
         let s = CTRL;
-        if c.check {
+        if on {
             self.rect(x, y, s, s, CHECK_ON, 1.0);
             let pts = [(x + s * 0.24, y + s * 0.52), (x + s * 0.43, y + s * 0.72), (x + s * 0.78, y + s * 0.3)];
             self.polyline(&pts, 2.6, [255, 255, 255]);
@@ -336,8 +345,11 @@ impl Canvas {
             self.polyline(&pts, 2.2, OFF);
         }
         hits.push(Hit { widget: check, x, y, w: s, h: s });
-        x += s + 8.0;
-        if c.reject {
+    }
+
+    fn reject_box(&mut self, x: f32, y: f32, on: bool, reject: Widget, hits: &mut Vec<Hit>) {
+        let s = CTRL;
+        if on {
             self.rect(x, y, s, s, REJECT_ON, 1.0);
             let (a, b) = (s * 0.28, s * 0.72);
             self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.6, [255, 255, 255]);
@@ -625,6 +637,7 @@ impl Panel {
         width: u32,
         height: u32,
         filter: &Controls,
+        burst_filter: Option<&Controls>,
         filter_text: &str,
         view: &View,
         entries: &[Entry],
@@ -644,20 +657,34 @@ impl Panel {
 
         // À droite des commandes de filtre : nombre de photos et « effacer ».
         let after = bar_hits.last().map_or(PADDING, |h| h.x + h.w) + 16.0;
-        let active = filter != &Controls::default();
+        let active = filter != &Controls::default() || burst_filter.is_some_and(|c| c != &Controls::default());
         let color = if active { [215, 215, 215] } else { [120, 120, 120] };
         canvas.text(&font, after, bar + 10.0 + 16.0, max_x, filter_text, 15.0, color);
         if active {
             let label = "effacer";
             let w = 56.0;
             let x = width as f32 - PADDING - w;
-            canvas.text(&font, x, bar + 10.0 + 16.0, max_x, label, 15.0, [150, 150, 150]);
-            bar_hits.push(Hit { widget: Widget::ClearFilter, x, y: bar, w, h: FILTER_BAR });
+            // Sous le compte, à droite de la rangée des rafales s'il y en a une.
+            let y = if burst_filter.is_some() { bar + FILTER_BAR } else { bar + 10.0 };
+            canvas.text(&font, x, y + 16.0, max_x, label, 15.0, [150, 150, 150]);
+            bar_hits.push(Hit { widget: Widget::ClearFilter, x, y: y - 4.0, w, h: CTRL + 8.0 });
         }
         canvas.rect(PADDING / 2.0, bar + 2.0, width as f32 - PADDING, 1.0, [255, 255, 255], 0.12);
 
+        // Filtre des rafales (vue par rafales) : « Rafales », étoiles, puis ✓ sous celui des photos.
+        if let Some(c) = burst_filter {
+            let y = bar + FILTER_BAR;
+            let on = c != &Controls::default();
+            let color = if on { [215, 215, 215] } else { [120, 120, 120] };
+            canvas.text(&font, PADDING, y + 16.0, max_x, "Rafales", 15.0, color);
+            let label: f32 = "Rafales".chars().map(|ch| font.metrics(ch, 15.0).advance_width).sum();
+            canvas.stars(PADDING + label + 10.0, y, c.rating, Widget::FilterBurstStar, &mut bar_hits);
+            let check_x = bar_hits.iter().find(|h| h.widget == Widget::Check).map_or(PADDING, |h| h.x);
+            canvas.check_box(check_x, y, c.check, Widget::FilterBurstCheck, &mut bar_hits);
+        }
+
         // Ligne de copie : JPEG / RAW / les deux, bouton de copie, compte rendu.
-        let by = bar + FILTER_BAR + 4.0;
+        let by = bar + FILTER_BAR + BURST_FILTER_BAR + 4.0;
         let mut x = PADDING;
         for (label, kind) in [("JPEG", CopyKind::Jpeg), ("RAW", CopyKind::Raw), ("Les deux", CopyKind::Both)] {
             let w = canvas.button(&font, x, by, label, view.copy_kind == kind);
