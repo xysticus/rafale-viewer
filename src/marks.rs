@@ -315,6 +315,26 @@ impl BurstMark {
     }
 }
 
+/// Filtre des rafales, cumulé avec celui des photos : seules les photos des
+/// rafales qui le passent sont parcourues et montrées.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BurstFilter {
+    /// Note minimale de la rafale (0 = pas de critère) ; exclut les rejetées.
+    pub min_rating: u8,
+    /// Rafales retenues seulement.
+    pub retained: bool,
+}
+
+impl BurstFilter {
+    pub fn active(&self) -> bool {
+        *self != BurstFilter::default()
+    }
+
+    pub fn matches(&self, m: &BurstMark) -> bool {
+        (self.min_rating == 0 || (!m.rejected && m.rating >= self.min_rating)) && (!self.retained || m.retained())
+    }
+}
+
 /// Règle de cohérence non respectée entre une rafale et ses photos.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Issue {
@@ -591,6 +611,21 @@ mod tests {
         // Marquage effacé : plus de fichier.
         assert_eq!(save_burst(Some(&moved), &second, &last, 14, &BurstMark::default()).unwrap(), None);
         assert!(!moved.exists());
+    }
+
+    #[test]
+    fn filtre_des_rafales() {
+        let tout = BurstFilter::default();
+        let rien = BurstMark::default();
+        let retenue3 = BurstMark { rating: 3, picked: true, rejected: false };
+        let rejetee = BurstMark { rejected: true, ..Default::default() };
+        assert!(!tout.active() && tout.matches(&rien) && tout.matches(&rejetee));
+        let retenues = BurstFilter { retained: true, ..Default::default() };
+        assert!(retenues.matches(&retenue3) && !retenues.matches(&rien));
+        let trois = BurstFilter { min_rating: 3, ..Default::default() };
+        assert!(trois.matches(&retenue3) && !trois.matches(&rien) && !trois.matches(&rejetee));
+        let quatre = BurstFilter { min_rating: 4, retained: true };
+        assert!(!quatre.matches(&retenue3));
     }
 
     #[test]

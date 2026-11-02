@@ -25,7 +25,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use loader::{Decoded, Job, Loader, Quality};
-use marks::{BurstFile, BurstMark, Color, Filter, Issue, Mark};
+use marks::{BurstFile, BurstFilter, BurstMark, Color, Filter, Issue, Mark};
 use meta::Meta;
 use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
 use render::{LoupeKind, Rect, Renderer};
@@ -92,8 +92,10 @@ struct App {
     /// RAW associé à chaque JPEG (même nom), et si son XMP appartient à un autre logiciel.
     raws: Vec<Option<PathBuf>>,
     raw_foreign: Vec<bool>,
-    /// Filtre de navigation, et images qui le passent (triées ; vide sans filtre).
+    /// Filtre de navigation (photos et rafales), et images qui le passent (triées ;
+    /// vide sans filtre).
     filter: Filter,
+    burst_filter: BurstFilter,
     visible: Vec<usize>,
     proxy: EventLoopProxy<()>,
     loader: Option<Loader>,
@@ -219,6 +221,7 @@ impl App {
             raws,
             raw_foreign,
             filter: Filter::default(),
+            burst_filter: BurstFilter::default(),
             visible: Vec::new(),
             proxy,
             loader: None,
@@ -282,19 +285,31 @@ impl App {
 
     /// Recalcule les images qui passent le filtre (après un changement de filtre ou de marquage).
     fn refresh_visible(&mut self) {
-        self.visible = if self.filter.active() {
+        let bursts = self.burst_filter_on();
+        self.visible = if self.filtering() {
             (0..self.files.len())
                 .filter(|&i| self.filter.matches(&self.marks[i]))
+                .filter(|&i| !bursts || self.burst_filter.matches(&self.bursts[self.burst_of[i]].mark))
                 .collect()
         } else {
             Vec::new()
         };
     }
 
+    /// Le filtre des rafales ne vaut qu'en vue par rafales, une fois leurs bornes connues.
+    fn burst_filter_on(&self) -> bool {
+        self.burst_filter.active() && !self.flat_view() && self.scanned == self.files.len()
+    }
+
+    /// Un filtre (photos ou rafales) restreint-il les images parcourues ?
+    fn filtering(&self) -> bool {
+        self.filter.active() || self.burst_filter_on()
+    }
+
     /// `k`-ième image visible après (`dir` = 1) ou avant (`dir` = -1) l'image `from`,
     /// sans sortir de la rafale bloquée.
     fn neighbor(&self, from: usize, dir: isize, k: usize) -> Option<usize> {
-        let i = if !self.filter.active() {
+        let i = if !self.filtering() {
             from.checked_add_signed(dir * k as isize).filter(|&i| i < self.files.len())
         } else if dir > 0 {
             let pos = self.visible.partition_point(|&v| v <= from);
@@ -324,7 +339,7 @@ impl App {
     }
 
     fn first_visible_in(&self, start: usize, len: usize) -> Option<usize> {
-        if self.filter.active() {
+        if self.filtering() {
             visible_in(&self.visible, start, len).first().copied()
         } else {
             (len > 0).then_some(start)
@@ -335,7 +350,7 @@ impl App {
     fn set_filter(&mut self, filter: Filter) {
         self.filter = filter;
         self.refresh_visible();
-        if self.filter.active() && self.visible.binary_search(&self.cur).is_err() {
+        if self.filtering() && self.visible.binary_search(&self.cur).is_err() {
             if let Some(i) = self.neighbor(self.cur, 1, 1).or_else(|| self.neighbor(self.cur, -1, 1)) {
                 self.jump(i, Instant::now());
             }
@@ -413,7 +428,7 @@ impl App {
             }
             KeyCode::End if pressed => {
                 let r = self.nav_range();
-                let target = if self.filter.active() {
+                let target = if self.filtering() {
                     visible_in(&self.visible, r.start, r.len()).last().copied()
                 } else {
                     r.end.checked_sub(1)
@@ -485,7 +500,7 @@ impl App {
 
     /// Sélection : les photos qui passent le filtre s'il y en a un, sinon les retenues.
     fn selection(&self) -> Vec<usize> {
-        if self.filter.active() {
+        if self.filtering() {
             self.visible.clone()
         } else {
             (0..self.files.len()).filter(|&i| self.marks[i].retained()).collect()
@@ -780,6 +795,7 @@ impl App {
         next.window = self.window.take();
         next.renderer = self.renderer.take();
         next.filter = self.filter;
+        next.burst_filter = self.burst_filter;
         next.flat = self.flat;
         next.flat_chosen = self.flat_chosen;
         next.copy_kind = self.copy_kind;
@@ -962,12 +978,21 @@ impl App {
             Widget::Color(c) => f.colors[c.index()] = !f.colors[c.index()],
             Widget::Check => f.retained = !f.retained,
             Widget::Reject => f.rejected = !f.rejected,
-            Widget::ClearFilter => f = Filter::default(),
+            Widget::ClearFilter => {
+                f = Filter::default();
+                self.burst_filter = BurstFilter::default();
+            }
+            Widget::FilterBurstStar(n) => {
+                let bf = &mut self.burst_filter;
+                bf.min_rating = if bf.min_rating == n { 0 } else { n };
+            }
+            Widget::FilterBurstCheck => self.burst_filter.retained = !self.burst_filter.retained,
             Widget::Bursts | Widget::Flat => {
                 self.flat = widget == Widget::Flat;
                 if self.flat_view() {
                     self.locked = None;
                 }
+                self.set_filter(self.filter);
                 self.flat_chosen = true;
                 self.list_offset = 0;
                 return;
@@ -1003,7 +1028,7 @@ impl App {
     fn burst_members(&self, i: usize) -> Vec<usize> {
         let Some(&b) = self.burst_of.get(i) else { return Vec::new() };
         let burst = &self.bursts[b];
-        if self.filter.active() {
+        if self.filtering() {
             visible_in(&self.visible, burst.start, burst.len).to_vec()
         } else {
             (burst.start..burst.start + burst.len).collect()
@@ -1264,6 +1289,7 @@ impl App {
         self.scanned = index + 1;
         if self.scanned == self.files.len() {
             self.attach_burst_files();
+            self.refresh_visible();
             let rates: Vec<f32> = self.bursts.iter().filter_map(|b| b.rate).collect();
             log::info!(
                 "{} rafales, rythme mesuré pour {} : {:?} i/s",
@@ -1315,6 +1341,8 @@ impl App {
             Ok(file) => burst.file = file,
             Err(e) => log::error!("rafale {} : {e}", b + 1),
         }
+        // La photo affichée reste même si sa rafale ne passe plus le filtre.
+        self.refresh_visible();
     }
 
     /// Règles de cohérence non respectées par la rafale `b` (rien avant la fin
@@ -1397,6 +1425,12 @@ impl App {
         let members = self.locked.map(|b| self.burst_members(self.bursts[b].start)).unwrap_or_default();
         let trash_burst = self.trash_burst();
         let warned: Vec<bool> = (0..self.bursts.len()).map(|b| !self.burst_issues(b).is_empty()).collect();
+        let filtering = self.filtering();
+        let burst_filter = (!self.flat_view()).then(|| Controls {
+            rating: self.burst_filter.min_rating,
+            check: self.burst_filter.retained,
+            ..Default::default()
+        });
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -1419,7 +1453,6 @@ impl App {
         let row_h = if grid { Panel::grid_row_height(width) } else { Panel::row_height(width) };
         self.list_row_h = row_h;
         let fit = ((height as f32 - header) / row_h).max(0.0) as isize;
-        let filtering = self.filter.active();
         let per = panel::THUMBS_PER_ROW;
 
         // Rafale bloquée : ses vues visibles, toutes si elles tiennent, sinon
@@ -1545,12 +1578,13 @@ impl App {
             copy_label: format!("Copier {count} {what}"),
             copy_message: self.copy_message.clone(),
         };
-        let key = format!("{width}x{height} {status} {filter_controls:?} {filter_text} {view:?} {entries:?}");
+        let key = format!("{width}x{height} {status} {filter_controls:?} {burst_filter:?} {filter_text} {view:?} {entries:?}");
         if key != self.list_key {
             let list = self.panel.render_list(
                 width,
                 height,
                 &filter_controls,
+                burst_filter.as_ref(),
                 &filter_text,
                 &view,
                 &entries,
