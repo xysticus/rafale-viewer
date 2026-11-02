@@ -6,7 +6,8 @@ Visionneur de photos pour Linux (GNOME / Wayland), écrit en Rust, fait pour **t
 - **Loupe 100 %** sous le pointeur, pour vérifier la netteté.
 - **Rafales détectées** automatiquement (numéro de vue OM System / Olympus, sinon heure de prise de vue), avec vignettes et rythme ; **vue à plat** pour les petits dossiers.
 - **Marquage interopérable** : notes, couleurs, retenue / rejet dans un `.xmp` à côté du JPEG et de son RAW, lu par darktable, digiKam, RawTherapee et Lightroom. Les photos ne sont jamais modifiées.
-- **Filtre** par note, couleur, retenue ou rejet, et **copie de la sélection** (JPEG, RAW ou les deux) vers le presse-papiers, à coller dans Fichiers.
+- **Jugement des rafales** : chaque rafale a sa note, sa retenue ou son rejet ; on la bloque (Entrée) pour l'examiner seule, avec une grille de ses vues ; des signalements ⚠ disent ce qu'il reste à faire (rafale retenue sans photo retenue…) ; une rafale rejetée part à la corbeille d'un coup.
+- **Filtre** par note, couleur, retenue ou rejet, et par rafales retenues ou notées, puis **copie de la sélection** (JPEG, RAW ou les deux) vers le presse-papiers, à coller dans Fichiers.
 
 Décodage turbojpeg (réduit 1/4 pendant le défilé), 11 décodeurs en parallèle, préchargement ±10 images, affichage wgpu.
 
@@ -14,7 +15,7 @@ Décodage turbojpeg (réduit 1/4 pendant le défilé), 11 décodeurs en parallè
 
 Rafale est un **projet personnel**, écrit pour un besoin précis : trier des rafales d'**OM System OM-1 Mk II** sous **Fedora, GNOME / Wayland**. Il est publié tel quel, au cas où il serve à d'autres, sans engagement de support.
 
-- **Boîtiers OM System / Olympus : visés.** La détection des rafales s'appuie sur le numéro de vue de la MakerNote OM ; le mode image et le filtre de bruit en viennent aussi, et les fonctions à venir (point AF…) en dépendront.
+- **Boîtiers OM System / Olympus : visés.** La détection des rafales s'appuie sur le numéro de vue de la MakerNote OM ; le mode image, le filtre de bruit et la zone AF (cadre, loupe et netteté AF) en viennent aussi.
 - **Autres marques (Sony, Canon, Nikon, Fujifilm…) : à adapter de ton côté.** Le défilé, la loupe, le marquage XMP et le filtre fonctionnent avec n'importe quel JPEG. Mais les rafales ne sont détectées que d'après l'heure de prise de vue (à la seconde, donc approximativement), et les réglages propres au boîtier ne sont pas affichés.
 - **GNOME : visé. KDE et autres bureaux : à adapter.** La copie vers le gestionnaire de fichiers utilise le format de presse-papiers de Fichiers (Nautilus) via `wl-copy` ; Dolphin attend un autre format. L'aide s'ouvre avec `zenity`, la police est trouvée par `fc-match`.
 

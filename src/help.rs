@@ -22,8 +22,8 @@ C'est là qu'on vérifie la netteté, sur un visage par exemple.
 l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
 Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
 • Le cadre vert sur la photo est la zone de mise au point enregistrée par le \
-boîtier (OM System) : elle suit le sujet, souvent le visage détecté. C l'affiche \
-ou le masque. La touche A \
+boîtier (OM System) : elle suit le sujet, souvent le visage détecté. Masqué au \
+démarrage, C l'affiche ou le masque. La touche A \
 place la loupe sur cette zone, vue après vue : elle suit le visage dans toute la \
 rafale, même s'il se déplace dans le cadre.
 • À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue \
@@ -39,7 +39,28 @@ Olympus, sinon heure de prise de vue. ↑ et ↓ sautent d'une rafale à l'autre
 • La liste à droite montre chaque rafale avec 4 vignettes réparties du début à la fin. \
 Un clic sur une ligne va au début de la rafale.
 • Vue « À plat » (dossiers de moins de 300 photos) : une vignette par photo, avec son \
-marquage. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangée.
+marquage. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangée. Les \
+photos y sont isolées : pas de blocage ni de marquage des rafales.
+
+JUGER LES RAFALES
+
+• Une rafale a son propre marquage, indépendant de celui de ses photos : Maj+1 à \
+Maj+5 la notent (Maj+0 efface), Maj+Espace la retient, Maj+X la rejette. La rangée \
+« Rafale », sous celle de la photo, fait la même chose à la souris. Rejeter une \
+rafale ne masque rien et ne touche pas à ses photos.
+• Ce marquage va dans un petit fichier texte par rafale marquée, dans le dossier de \
+la séance : PA290128-PA290142.rafale (première et dernière vue). Les autres \
+logiciels ne le lisent pas.
+• Entrée bloque la rafale de la photo affichée (bandeau bleu et cadenas) : ← → et \
+le défilé ne sortent plus de la rafale, Début et Fin vont à sa première et à sa \
+dernière vue, ↑ et ↓ passent à la rafale précédente ou suivante en restant \
+bloqué. La liste devient une grille des vues de la rafale (régulièrement espacées \
+si elle est longue). Entrée ou Échap la débloque.
+• Rafale signale (⚠ dans la liste, consigne dans le panneau) une rafale retenue \
+sans photo retenue, une rafale notée X sans photo à X étoiles ou plus, et une \
+rafale rejetée qui contient des photos retenues. Retenir une photo ne retient pas \
+sa rafale : on fait les deux. Ctrl+C et « Retoucher… » demandent confirmation \
+tant qu'il reste des rafales signalées.
 
 MARQUER
 
@@ -61,6 +82,9 @@ METTRE LES REJETÉES À LA CORBEILLE
 leurs fichiers d'accompagnement (XMP de Rafale ou d'autres logiciels, PP3 de \
 RawTherapee). Une fenêtre demande d'abord confirmation, avec le nombre de fichiers \
 et la place libérée. Tout reste récupérable dans la corbeille.
+• Rafale bloquée et rejetée : le bouton devient « Corbeille : rafale 12 (15 photos) » \
+et met à la corbeille toute la rafale (photos, RAW, XMP, PP3 et son fichier \
+.rafale), une rafale à la fois, après la même confirmation.
 
 IMPORTER UNE CARTE
 
@@ -71,9 +95,10 @@ importé. Les fichiers déjà importés sont sautés ; la carte n'est pas modifi
 
 FILTRER
 
-• La barre du bas filtre par note minimale, couleur, retenue ou rejet. Le défilé, \
-les flèches, Début, Fin et la liste ne montrent alors que les photos qui passent \
-le filtre.
+• La barre du bas filtre les photos par note minimale, couleur, retenue ou rejet, \
+et, sur sa seconde rangée « Rafales », les rafales par note minimale ou retenue. \
+Les deux se cumulent. Le défilé, les flèches, Début, Fin et la liste ne montrent \
+alors que les photos qui passent le filtre.
 
 COPIER LA SÉLECTION
 
@@ -96,11 +121,15 @@ déjà copiée est sautée, et un XMP déjà présent n'est jamais écrasé.
 
 MÉTHODE CONSEILLÉE
 
-1. Défile chaque rafale touche maintenue, relâche sur les moments forts, vérifie \
-à la loupe, et note la qualité en étoiles.
-2. Filtre sur les meilleures notes (par exemple ★ 3) : dans chaque rafale, choisis \
-celle à retoucher (N pour la plus nette, loupe AF) et coche-la avec Espace.
-3. « Retoucher… » ou Ctrl+C : seules les photos cochées partent, avec leurs étoiles.
+1. Premier passage, toute la séance : défile touche maintenue. Sur une rafale qui \
+accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; note-la \
+(Maj+1 à 5), retiens-la (Maj+Espace) ou rejette-la (Maj+X) ; Entrée, et continue.
+2. Second passage : filtre « Rafales ✓ », bloque la première, puis ↓ de rafale en \
+rafale. Dans chacune, trouve la meilleure vue (N pour la plus nette, loupe AF, \
+grille), note-la et coche-la avec Espace.
+3. Les ⚠ disent ce qu'il reste à faire ; quand il n'y en a plus, « Retoucher… » \
+ou Ctrl+C part sans avertissement : seules les photos cochées partent.
+4. Ménage : bloque chaque rafale rejetée et mets-la à la corbeille.
 
 À PROPOS
 
@@ -121,7 +150,12 @@ DÉFILÉ
 → ou Page suivante : photo suivante ; maintenue, défilé continu
 ← ou Page précédente : photo précédente ; maintenue, défilé en arrière
 ↓ / ↑ : rafale suivante / précédente (vue À plat : rangée suivante / précédente)
-Début / Fin : première / dernière photo
+Début / Fin : première / dernière photo (rafale bloquée : de la rafale)
+
+RAFALE BLOQUÉE
+
+Entrée : bloque ↔ débloque la rafale de la photo affichée
+Échap : débloque la rafale (sinon : quitte le plein écran)
 
 MARQUAGE
 
@@ -130,6 +164,12 @@ Espace : retenue ✓ ↔ non retenue (les étoiles ne changent pas)
 0 : efface les étoiles
 X ou R : rejetée ↔ non rejetée
 F1 à F5 : étiquette rouge, jaune, verte, bleue, violette (un deuxième appui l'enlève)
+
+MARQUAGE DE LA RAFALE
+
+Maj+Espace : rafale retenue ↔ non retenue
+Maj+1 à Maj+5 : note de la rafale ; Maj+0 l'efface
+Maj+X ou Maj+R : rafale rejetée ↔ non rejetée
 
 COPIE
 
@@ -153,7 +193,9 @@ Clic sur la photo : fige la loupe à cet endroit (un autre clic la déplace)
 Clic droit : libère la loupe figée (libérée aussi en changeant de rafale)
 Étoiles, couleurs, ✓, ✕ en haut du panneau : marquage de la photo affichée
 (re-clic sur la même étoile ou couleur : l'enlève)
-Mêmes commandes en bas : filtre ; « effacer » supprime le filtre
+Rangée « Rafale » : marquage de la rafale de la photo affichée
+Mêmes commandes en bas : filtre des photos, puis rangée « Rafales » : filtre des
+rafales ; « effacer » supprime les deux
 Clic sur une rafale ou une vignette : y aller
 Molette sur le panneau, ou ascenseur : faire défiler la liste
 JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
@@ -161,4 +203,5 @@ JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
 Maj+clic sur « Retoucher… » : choisir un autre logiciel
 Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
 Corbeille : N rejetées : met les photos rejetées à la corbeille (après confirmation)
+Corbeille : rafale N : rafale bloquée et rejetée, toute la rafale à la corbeille
 ";

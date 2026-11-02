@@ -55,7 +55,7 @@ Une rafale a son propre marquage, indépendant de celui de ses photos :
 
 ## 3. Règles de cohérence
 
-1. **Retenir une photo retient sa rafale** (et lève son rejet). L'inverse n'est pas automatique : décocher la dernière photo retenue laisse la rafale retenue, signalée par la règle 2.
+1. ~~**Retenir une photo retient sa rafale**~~ : abandonné à l'usage (section 8). Le marquage d'une rafale et celui de ses photos sont indépendants ; la règle 2 rappelle de faire les deux.
 2. **Une rafale retenue doit contenir au moins une photo retenue.**
 3. **Une rafale notée X doit contenir au moins une photo notée X ou plus** (photos rejetées exclues).
 4. **Une rafale rejetée ne doit contenir aucune photo retenue.**
@@ -82,7 +82,7 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 3. **Les ⚠ disent ce qu'il reste à faire** ; quand il n'y en a plus, « Retoucher… » part sans avertissement.
 4. **Ménage** : bloquer chaque rafale rejetée et la mettre à la corbeille, une par une.
 
-## 6. Étapes de réalisation
+## 6. Étapes de réalisation (toutes faites, version 3.0.0)
 
 | Étape | Contenu |
 |---|---|
@@ -94,13 +94,13 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 
 ## 7. Points tranchés
 
-- Filtres sur les rafales (n'afficher que les rafales retenues, ou notées X ou plus) : utile au second passage, à ajouter seulement si le filtre des photos ne suffit pas (décidé).
+- Filtres sur les rafales (n'afficher que les rafales retenues, ou notées X ou plus) : d'abord écartés tant que le filtre des photos suffisait. Il ne suffit pas au second passage : les photos des rafales retenues n'y sont encore ni cochées ni notées. Ajoutés à la fin : rangée « Rafales » de la barre de filtre, cumulée avec celle des photos (décidé).
 - La note de la rafale n'est pas exportée vers les autres logiciels (décidé) : elle sert au tri dans Rafale.
 - Échap débloque la rafale bloquée au lieu de fermer Rafale (décidé à l'étape 2).
 - Rejeter une rafale efface sa note et sa coche, comme pour une photo ; la noter ou la cocher lève le rejet (décidé à l'étape 1).
 - Le marquage et le blocage des rafales attendent la fin de l'analyse des en-têtes, qui fixe les bornes des rafales (décidé à l'étape 1).
 
-## 8. À peaufiner à la fin
+## 8. À peaufiner à la fin (fait dans la 3.0.0)
 
 - **Cases ✓ et ✕ lisibles décochées** : pour la photo comme pour la rafale, une case non cochée montre sa coche ou sa croix en gris, pour qu'on les distingue sans les cocher.
 - **Mode en cours bien visible dans le panneau de droite** : rafale bloquée ou non, avec un symbole distinct et assez voyant pour s'en rendre compte d'un coup d'œil.
