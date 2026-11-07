@@ -45,7 +45,7 @@ Les threads réveillent la boucle winit par `EventLoopProxy::send_event(())`. Le
 | `examples/bench.rs` | banc de mesure lecture disque / décodage |
 | `retouch.rs` | « Retoucher… » : copie de la sélection à côté de la séance, choix et lancement du logiciel |
 | `import.rs` | import d'une carte mémoire (DCIM) vers `~/Images/AAAA-MM-JJ` |
-| `packaging/` | `.desktop`, icône SVG, `install.sh` (installation dans `~/.local`) |
+| `packaging/` | `.desktop`, icône SVG, entrée « Ouvrir dans Rafale » du clic droit de Fichiers (`rafale-nautilus.py`, demande `nautilus-python`), `install.sh` (installation dans `~/.local`) |
 
 ## 3. Défilé
 
