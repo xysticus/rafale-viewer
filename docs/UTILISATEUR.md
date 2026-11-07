@@ -26,7 +26,7 @@ Le script copie le programme dans `~/.local/bin`, et installe l'icône et l'entr
 
 ## Lancement
 
-- **Menu des applications :** « Rafale ». Une fenêtre demande le dossier à trier.
+- **Menu des applications :** « Rafale ». Une fenêtre demande le dossier à trier ; elle s'ouvre sur le dernier dossier ouvert, qu'il suffit de valider pour le reprendre.
 - **Fichiers :** clic droit sur un dossier, sur une photo ou sur le fond de la fenêtre, puis **Ouvrir dans Rafale**. Sur une photo, Rafale ouvre son dossier en commençant par elle. Cette entrée demande le paquet `nautilus-python` (`sudo dnf install nautilus-python`, puis `./packaging/install.sh` et `nautilus -q`) ; sans lui, passe par *Ouvrir avec… › Rafale*.
 - **Terminal :**
 
@@ -131,7 +131,10 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | C | Affiche ↔ masque le cadre vert de la zone AF |
 | G | Affiche ↔ masque la ligne de transition du Live GND sur la photo |
 | F ou F11 | Plein écran |
+| Ctrl+O | Ouvrir un autre dossier, sans fermer la fenêtre |
 | Ctrl+Q | Quitter |
+
+**Changer de dossier (Ctrl+O).** La fenêtre de choix s'ouvre sur le dossier parent de la séance, là où sont les autres séances. Rafale reprend à la dernière photo vue du nouveau dossier, et retiendra celle de la séance quittée. Le filtre et la vue repartent de zéro ; la loupe, le cadre AF, la ligne GND et le choix JPEG / RAW restent. Un dossier sans JPEG laisse la séance en cours, avec un message à côté du bouton de copie. Une carte mémoire s'importe toujours en l'ouvrant depuis Fichiers.
 
 **Le défilé.** Un appui bref avance d'une seule photo. Si tu maintiens la touche plus de 0,3 s, le défilé continu démarre. Il ne saute jamais d'image : si le disque ou le décodage ne suivent pas, il ralentit au lieu de sauter des photos. Pendant le défilé, les photos sont affichées en aperçu réduit. Au relâchement, la pleine résolution arrive en environ un quart de seconde.
 

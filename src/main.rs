@@ -52,6 +52,8 @@ enum Pending {
     /// malgré des rafales signalées.
     Copy,
     Retouch(bool),
+    /// Choix d'un autre dossier à trier (Ctrl+O).
+    Folder,
 }
 
 struct Burst {
@@ -380,6 +382,7 @@ impl App {
                 // les marquages à un logiciel qu'on essaie sur une copie des photos.
                 "x" if pressed && ctrl => return self.copy_xmp(),
                 "q" if pressed && ctrl => return event_loop.exit(),
+                "o" if pressed && ctrl => return self.ask_folder(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 "n" if pressed => return self.jump_sharpest(),
@@ -787,8 +790,50 @@ impl App {
             }
             Pending::Copy if ok => self.copy_selection_now(),
             Pending::Retouch(choose) if ok => self.retouch_now(choose),
+            Pending::Folder if ok && !out.is_empty() => self.open_folder(PathBuf::from(out), event_loop),
             _ => {}
         }
+    }
+
+    /// Ctrl+O : choix d'un autre dossier, à partir du parent de la séance, là où
+    /// sont ses voisines (fenêtre zenity, non bloquante).
+    fn ask_folder(&mut self) {
+        if self.help_open() {
+            return;
+        }
+        let from = self.dir.parent().unwrap_or(&self.dir);
+        match folder_chooser(from).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+            Ok(c) => {
+                self.help = Some(c);
+                self.modal = Some(Pending::Folder);
+            }
+            Err(e) => log::warn!("zenity : {e}"),
+        }
+    }
+
+    /// Passe au dossier `dir` sans fermer la fenêtre. Le filtre et la vue repartent
+    /// de zéro, ceux d'une autre séance pouvant tout masquer ; les réglages restent.
+    /// Sans photo, ou pour une carte à importer, Rafale reste sur la séance en cours.
+    fn open_folder(&mut self, dir: PathBuf, event_loop: &ActiveEventLoop) {
+        let name = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        if import::find_dcim(&dir).is_some() {
+            self.copy_message = format!("{name} : carte à importer, ouvrir depuis Fichiers");
+            return;
+        }
+        if !list_jpegs(&dir).is_ok_and(|f| !f.is_empty()) {
+            self.copy_message = format!("aucune photo JPEG dans {name}");
+            return;
+        }
+        if let Some(photo) = self.files[self.cur].file_name().and_then(|n| n.to_str()) {
+            positions::save(&self.dir, photo);
+        }
+        let start = positions::load(&dir).map(|photo| dir.join(photo));
+        self.dir = dir;
+        self.filter = Filter::default();
+        self.burst_filter = BurstFilter::default();
+        self.flat = true;
+        self.flat_chosen = false;
+        self.reload(start, event_loop);
     }
 
     /// Après la confirmation : corbeille, puis rechargement de la séance.
@@ -2133,6 +2178,11 @@ mod positions {
             .collect()
     }
 
+    /// Dossier ouvert le plus récemment, s'il existe encore.
+    pub fn last_dir() -> Option<PathBuf> {
+        read().into_iter().map(|(d, _)| PathBuf::from(d)).next().filter(|d| d.is_dir())
+    }
+
     pub fn load(dir: &Path) -> Option<String> {
         let key = key(dir)?;
         read().into_iter().find(|(d, _)| *d == key).map(|(_, n)| n)
@@ -2322,10 +2372,28 @@ fn import_card(dcim: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Fenêtre de choix d'un dossier, ouverte sur `from` (chemin vide : dossier courant).
+fn folder_chooser(from: &Path) -> Command {
+    let mut c = Command::new("zenity");
+    c.args(["--file-selection", "--directory", "--title", "Rafale — dossier de photos à trier"]);
+    if !from.as_os_str().is_empty() {
+        // La barre finale ouvre le dossier au lieu de le sélectionner dans son parent.
+        let mut arg = std::ffi::OsString::from("--filename=");
+        arg.push(from);
+        arg.push("/");
+        c.arg(arg);
+    }
+    c
+}
+
 /// Choix d'un dossier de photos (zenity) ; None si l'utilisateur annule.
 fn pick_folder() -> Option<PathBuf> {
-    let out = Command::new("zenity")
-        .args(["--file-selection", "--directory", "--title", "Rafale — dossier de photos à trier"])
+    // Part du dernier dossier ouvert : le reprendre ne demande qu'une validation.
+    let mut chooser = match positions::last_dir() {
+        Some(dir) => folder_chooser(&dir),
+        None => folder_chooser(Path::new("")),
+    };
+    let out = chooser
         .output()
         .map_err(|e| log::error!("zenity : {e}"))
         .ok()?;
@@ -2375,6 +2443,20 @@ mod tests {
         let text = std::fs::read_to_string(base.join("state/rafale/positions")).unwrap();
         assert_eq!(text.lines().count(), 2, "une ligne par dossier, la plus récente en tête : {text}");
         assert!(text.starts_with(a.canonicalize().unwrap().to_str().unwrap()));
+        assert_eq!(super::positions::last_dir(), Some(a.canonicalize().unwrap()));
+        // Le dernier dossier a disparu : on ne le propose plus.
+        std::fs::remove_dir(&a).unwrap();
+        assert_eq!(super::positions::last_dir(), None);
+    }
+
+    #[test]
+    fn choix_du_dossier() {
+        let args = |from: &str| -> Vec<String> {
+            let c = super::folder_chooser(std::path::Path::new(from));
+            c.get_args().map(|a| a.to_string_lossy().into_owned()).collect()
+        };
+        assert!(args("/home/a/Images/ma séance").contains(&"--filename=/home/a/Images/ma séance/".to_string()));
+        assert!(!args("").iter().any(|a| a.starts_with("--filename")));
     }
 
     #[test]

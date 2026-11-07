@@ -198,6 +198,7 @@ G : affiche ↔ masque la ligne de transition sur la photo
 FENÊTRE
 
 F ou F11 : plein écran
+Ctrl+O : ouvrir un autre dossier
 Ctrl+Q : quitter
 
 SOURIS
