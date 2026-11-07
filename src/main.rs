@@ -27,7 +27,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 use loader::{Decoded, Job, Loader, Quality};
 use marks::{BurstFile, BurstFilter, BurstMark, Color, Filter, Issue, Mark};
 use meta::Meta;
-use panel::{Cell, Controls, CopyKind, Entry, Hit, Line, Panel, Row, Track, View, Widget};
+use panel::{Cell, Controls, CopyKind, Entry, Hit, Info, Line, Panel, Row, Track, View, Widget};
 use render::{LoupeKind, Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -133,10 +133,14 @@ struct App {
     sharp_done: Vec<bool>,
     /// Rafale où la loupe a été figée : elle est libérée quand on en sort.
     pin_burst: Option<usize>,
+    /// Loupe activée (touche L, ou A qui la place sur la zone AF) ; coupée au départ.
+    loupe_on: bool,
     /// Loupe AF (touche A) : la loupe se place sur la zone AF de chaque vue.
     af_loupe: bool,
     /// Cadre vert de la zone AF sur la photo (touche C).
     af_frame: bool,
+    /// Ligne du Live GND sur la photo (touche G).
+    gnd_line: bool,
 
     /// En-têtes analysés en arrière-plan, dans l'ordre des fichiers.
     scan_rx: crossbeam_channel::Receiver<(usize, Meta)>,
@@ -247,8 +251,10 @@ impl App {
             pin_burst: None,
             sharpness: vec![None; n],
             sharp_done: vec![false; n],
+            loupe_on: false,
             af_loupe: false,
             af_frame: false,
+            gnd_line: false,
             scan_rx,
             scanned: 0,
             bursts: Vec::new(),
@@ -383,9 +389,25 @@ impl App {
                 }
                 "a" if pressed => {
                     self.af_loupe = !self.af_loupe;
+                    self.loupe_on |= self.af_loupe;
                     if let Some(w) = &self.window {
                         w.request_redraw();
                     }
+                    return;
+                }
+                "l" if pressed => {
+                    self.loupe_on = !self.loupe_on;
+                    if !self.loupe_on {
+                        self.af_loupe = false;
+                        self.pin = None;
+                    }
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                    return;
+                }
+                "g" if pressed => {
+                    self.gnd_line = !self.gnd_line;
                     return;
                 }
                 // Rejet : X comme Lightroom, R comme darktable ; avec Maj, la rafale.
@@ -799,8 +821,10 @@ impl App {
         next.flat = self.flat;
         next.flat_chosen = self.flat_chosen;
         next.copy_kind = self.copy_kind;
+        next.loupe_on = self.loupe_on;
         next.af_loupe = self.af_loupe;
         next.af_frame = self.af_frame;
+        next.gnd_line = self.gnd_line;
         next.refresh_visible();
         // L'ancien chargeur s'arrête (ses threads finissent leur tâche) à la suppression.
         *self = next;
@@ -1088,9 +1112,11 @@ impl App {
         self.cursor.map(|p| (p, LoupeKind::Pointer))
     }
 
-    /// La loupe ne s'affiche qu'à l'arrêt, sur l'image en pleine résolution.
+    /// La loupe, si elle est activée, ne s'affiche qu'à l'arrêt, sur l'image en
+    /// pleine résolution.
     fn loupe_allowed(&self) -> bool {
-        self.scrolling == 0
+        self.loupe_on
+            && self.scrolling == 0
             && self.pending == 0
             && self.shown
                 == Some(Job {
@@ -1106,7 +1132,7 @@ impl App {
                 let progress = if done < total { format!("   (mesure {done} / {total})") } else { String::new() };
                 match cur {
                     Some((pct, rank)) => (
-                        format!("Netteté AF : {pct} % de la plus nette · rang {rank} / {total}{progress}"),
+                        format!("Netteté AF : {pct} % · rang {rank} / {total}{progress}"),
                         if rank == 1 { [110, 210, 120] } else { [175, 175, 175] },
                     ),
                     None if self.sharp_done[self.cur] => ("Netteté AF : non mesurable".to_string(), [150, 150, 150]),
@@ -1153,6 +1179,9 @@ impl App {
             ("Non retenue".to_string(), [105, 105, 105])
         };
         let meta = self.metas[self.cur].as_ref();
+        let gnd_view = meta.and_then(|m| Some((m.gnd?, m.orientation)));
+        let gnd_label = gnd_view.map(|(g, _)| g.label());
+        let gnd = gnd_view.zip(gnd_label.as_deref()).map(|((g, o), label)| (label, g.view(o).dark));
         let raw_text = match &self.raws[self.cur] {
             Some(raw) => {
                 let folder = self.files[self.cur].parent().unwrap_or(Path::new(""));
@@ -1165,82 +1194,61 @@ impl App {
             }
             None => "pas de RAW".to_string(),
         };
+        const DIM: [u8; 3] = [150, 150, 150];
+        let plain = |text: String, size: f32, color: [u8; 3], gap: f32| Line { text, size, color, gap, right: String::new(), right_color: DIM };
+        let settings = meta
+            .map(|m| {
+                let mut parts = vec![m.exposure.clone()];
+                parts.extend(m.picture_mode.clone());
+                parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
+                parts.join("   ·   ")
+            })
+            .unwrap_or_default();
+        let burst_text = match self.burst_of.get(self.cur) {
+            Some(&b) => format!(
+                "Rafale {}{}   vue {} / {}{}",
+                b + 1,
+                if self.locked == Some(b) { " bloquée" } else { "" },
+                self.cur - self.bursts[b].start + 1,
+                self.bursts[b].len,
+                self.bursts[b].rate.map(|r| format!("   {}", panel::format_rate(r))).unwrap_or_default()
+            ),
+            None => String::new(),
+        };
+        let loupe_text = if self.pin.is_some() {
+            "Loupe figée"
+        } else if self.af_loupe {
+            if meta.is_some_and(|m| m.af.is_some()) { "Loupe AF" } else { "Loupe AF : pas de zone" }
+        } else if self.loupe_on {
+            "Loupe"
+        } else {
+            ""
+        };
         let lines = [
-            Line { text: mark, size: 16.0, color: mark_color, gap: 0.0 },
-            Line { text: name, size: 21.0, color: [230, 230, 230], gap: 12.0 },
-            Line {
-                text: meta.map(|m| m.exposure.clone()).unwrap_or_default(),
-                size: 17.0,
-                color: [205, 205, 205],
-                gap: 4.0,
-            },
-            Line {
-                text: meta
-                    .map(|m| {
-                        let mut parts = Vec::new();
-                        parts.extend(m.picture_mode.clone());
-                        parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
-                        parts.join("   ·   ")
-                    })
-                    .unwrap_or_default(),
-                size: 16.0,
-                color: [150, 150, 150],
-                gap: 3.0,
-            },
-            Line { text: raw_text, size: 16.0, color: [150, 150, 150], gap: 12.0 },
-            Line {
-                text: if self.pin.is_some() {
-                    "Loupe figée · clic droit pour la libérer".to_string()
-                } else if self.af_loupe {
-                    if meta.is_some_and(|m| m.af.is_some()) {
-                        "Loupe sur la zone AF · A pour la couper".to_string()
-                    } else {
-                        "Loupe AF : pas de zone AF pour cette photo".to_string()
-                    }
-                } else {
-                    String::new()
-                },
-                size: 16.0,
-                color: [90, 160, 255],
-                gap: 3.0,
-            },
-            Line { text: sharp_text, size: 16.0, color: sharp_color, gap: 3.0 },
-            Line {
-                text: format!("{} / {}", self.cur + 1, self.files.len()),
-                size: 17.0,
-                color: [150, 150, 150],
-                gap: 3.0,
-            },
-            Line {
-                text: match self.burst_of.get(self.cur) {
-                    Some(&b) => format!(
-                        "Rafale {}{}   vue {} / {}{}",
-                        b + 1,
-                        if self.locked == Some(b) { " bloquée" } else { "" },
-                        self.cur - self.bursts[b].start + 1,
-                        self.bursts[b].len,
-                        self.bursts[b].rate.map(|r| format!("   {}", panel::format_rate(r))).unwrap_or_default()
-                    ),
-                    None => String::new(),
-                },
-                size: 17.0,
-                color: [150, 150, 150],
-                gap: 3.0,
-            },
+            Line { right: format!("{} / {}", self.cur + 1, self.files.len()), ..plain(name, 20.0, [230, 230, 230], 6.0) },
+            plain(settings, 16.0, [205, 205, 205], 3.0),
+            Line { right: burst_text, ..plain(raw_text, 16.0, DIM, 3.0) },
+            Line { right: loupe_text.to_string(), right_color: [90, 160, 255], ..plain(sharp_text, 16.0, sharp_color, 3.0) },
             // Règle de cohérence non respectée par la rafale, et quoi faire.
-            Line { text: issue, size: 16.0, color: panel::WARNING, gap: 8.0 },
-            Line { text: advice, size: 16.0, color: [190, 160, 110], gap: 2.0 },
+            plain(issue, 16.0, panel::WARNING, 6.0),
+            plain(advice, 16.0, [190, 160, 110], 2.0),
         ];
         let key = format!(
-            "{width}|{controls:?}|{burst:?}|{:?}|{}",
+            "{width}|{controls:?}|{burst:?}|{:?}|{mark}|{gnd:?}|{}",
             self.locked,
-            lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("|")
+            lines.iter().flat_map(|l| [l.text.as_str(), l.right.as_str()]).collect::<Vec<_>>().join("|")
         );
         if key == self.panel_key {
             return;
         }
-        let locked = self.locked.is_some();
-        let (pixels, w, h, hits) = self.panel.render_info(width, &controls, burst.as_ref(), locked, &lines);
+        let info = Info {
+            controls: &controls,
+            burst: burst.as_ref(),
+            locked: self.locked.is_some(),
+            mark: (&mark, mark_color),
+            gnd,
+        };
+        let (pixels, w, h, hits) = self.panel.render_info(width, &info, &lines);
         renderer.set_panel(&pixels, w, h);
         self.info_hits = hits;
         self.panel_key = key;
@@ -1675,8 +1683,8 @@ impl App {
         };
         let (lx, ly) = renderer.list_origin();
         if cx < lx {
-            // Clic sur la photo : la loupe se fige à cet endroit (ou s'y déplace).
-            if let Some(uv) = renderer.image_point((cx, cy)) {
+            // Clic sur la photo : la loupe activée se fige à cet endroit (ou s'y déplace).
+            if let Some(uv) = renderer.image_point((cx, cy)).filter(|_| self.loupe_on) {
                 self.pin = Some(uv);
                 self.pin_burst = self.burst_of.get(self.cur).copied();
                 if let Some(w) = &self.window {
@@ -1798,8 +1806,14 @@ impl App {
             }
         }
         let af = self.shown_af().filter(|_| self.af_frame);
+        // Ligne du Live GND de la photo affichée, si elle est demandée (touche G).
+        let gnd_line = self
+            .shown
+            .filter(|_| self.gnd_line)
+            .and_then(|s| self.metas[s.index].as_ref())
+            .and_then(|m| Some(m.gnd?.view(m.orientation).line));
         if let Some(r) = &mut self.renderer {
-            if r.set_af(af) {
+            if r.set_af(af) | r.set_gnd_line(gnd_line) {
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
