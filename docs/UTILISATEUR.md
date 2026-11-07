@@ -64,16 +64,13 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 
 ```
 ┌──────────────────────────────────────┬──────────────────────┐
-│                                      │ ★★★☆☆ ■■■■■ [✓] [✕] │
+│                                      │ ★★★☆☆ ■■■ [✓][✕] ◐GND│
 │                                      │ Rafale ★★☆☆☆  [✓] [✕]│
-│                                      │ Retenue              │
-│                                      │ PA290123.JPG         │
-│                                      │ 1/500 s  f/4  ISO …  │
-│              photo                   │ Natural · filtre …   │
-│        (calée à gauche ;             │ RAW : raw/PA….ORF    │
-│     portrait : centrée dans          │ 123 / 2355           │
-│        la zone libre)                │ Rafale 12  vue 5/54  │
-│                                      │ ⚠ consigne éventuelle│
+│                                      │ PA290123.JPG  123/235│
+│              photo                   │ 1/500 s f/4 ISO … ·… │
+│        (calée à gauche ;             │ RAW : raw/…  Rafale 1│
+│     portrait : centrée dans          │ Netteté AF …    Loupe│
+│        la zone libre)                │ ⚠ consigne éventuelle│
 │                                      ├──────────────────────┤
 │                                      │ Rafale 11  20:45:07 ▐│
 │                                      │ [▫][▫][▫][▫]        ▐│
@@ -91,9 +88,11 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois parties.
 
 **En haut, la photo affichée :**
-- les commandes de marquage de la photo (étoiles, couleur, retenue, rejet), puis celles de sa rafale (rangée « Rafale » : étoiles, retenue, rejet), et l'état de la photo en toutes lettres ;
-- le nom du fichier, puis l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
-- le RAW associé, la position dans le dossier, la rafale, la place dans la rafale et le rythme ;
+- les commandes de marquage de la photo (étoiles, couleur, retenue, rejet), l'état de la photo en toutes lettres et, s'il a servi, le Live GND (voir « Live GND ») ; dessous, celles de sa rafale (rangée « Rafale » : étoiles, retenue, rejet) ;
+- le nom du fichier et, à droite, la position dans le dossier ;
+- l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
+- le RAW associé et, à droite, la rafale, la place dans la rafale et le rythme ;
+- la netteté AF et, à droite, l'état de la loupe ;
 - en orange, si la rafale ne respecte pas une règle de cohérence, ce qui ne va pas et quoi faire (voir « Juger les rafales »).
 
 **La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, puis à droite le marquage de la rafale (étoiles et ✓, ou ✕), un ⚠ si elle est signalée, et « ✓ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
@@ -126,9 +125,11 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | Maj+1 à Maj+5 | Note de la rafale ; Maj+0 l'efface |
 | Maj+X ou Maj+R | Rafale rejetée ↔ non rejetée |
 | Ctrl+C | Copie la sélection dans le presse-papiers (voir « Copier la sélection ») |
-| A | Loupe sur la zone AF de chaque vue ↔ loupe sous le pointeur |
+| L | Active ↔ coupe la loupe (coupée au démarrage) |
+| A | Active la loupe sur la zone AF de chaque vue ↔ loupe sous le pointeur |
 | N | Vue la plus nette de la rafale (voir « Netteté AF ») |
 | C | Affiche ↔ masque le cadre vert de la zone AF |
+| G | Affiche ↔ masque la ligne de transition du Live GND sur la photo |
 | F ou F11 | Plein écran |
 | Ctrl+Q | Quitter |
 
@@ -138,16 +139,22 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 ## Souris
 
-- **Loupe 100 %.** À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
-- **Loupe figée.** Un **clic sur la photo** fige la loupe à cet endroit : elle y reste quand tu passes d'une vue à l'autre avec ← et →, ce qui permet de comparer la netteté du même visage sur toute une rafale sans bouger la souris. Elle est alors bordée de bleu, et le panneau indique « Loupe figée ». Un autre clic la déplace ; un **clic droit** la libère. Elle est aussi libérée dès que tu passes à une autre rafale, dont le cadrage est différent.
+- **Loupe 100 %.** Elle est coupée au démarrage : **L** l'active, et la coupe à nouveau (loupe figée et loupe AF comprises). À l'arrêt, une fois la pleine résolution chargée, place le pointeur sur l'image : un carré de 600 px montre les pixels réels autour du pointeur, par exemple le visage de la cavalière. Le pointeur est masqué tant que la loupe est affichée. La loupe disparaît dès que le pointeur sort de l'image ou que le défilé reprend.
+- **Loupe figée.** Loupe activée, un **clic sur la photo** la fige à cet endroit : elle y reste quand tu passes d'une vue à l'autre avec ← et →, ce qui permet de comparer la netteté du même visage sur toute une rafale sans bouger la souris. Elle est alors bordée de bleu, et le panneau indique « Loupe figée ». Un autre clic la déplace ; un **clic droit** la libère. Elle est aussi libérée dès que tu passes à une autre rafale, dont le cadrage est différent.
 - **Zone AF.** Un cadre vert montre sur la photo la zone de mise au point enregistrée par le boîtier (OM System / Olympus). Elle suit le sujet vue après vue, le plus souvent le visage détecté par l'appareil. La touche **C** l'affiche ou la masque (masquée au lancement) ; la loupe AF fonctionne dans les deux cas.
-- **Loupe AF (touche A).** La loupe se place d'elle-même sur la zone AF de chaque vue, et suit donc le visage dans toute la rafale, même s'il se déplace dans le cadre. Sa bordure est verte, et le panneau indique « Loupe sur la zone AF ». Une photo sans zone AF retombe sur la loupe sous le pointeur. Un clic sur la photo fige la loupe, ce qui l'emporte sur la loupe AF ; A la coupe.
+- **Loupe AF (touche A).** A active la loupe, qui se place d'elle-même sur la zone AF de chaque vue, et suit donc le visage dans toute la rafale, même s'il se déplace dans le cadre. Sa bordure est verte, et le panneau indique « Loupe sur la zone AF ». Une photo sans zone AF retombe sur la loupe sous le pointeur. Un clic sur la photo fige la loupe, ce qui l'emporte sur la loupe AF ; A la coupe.
 - **Netteté AF.** À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue de la rafale, en commençant par la photo affichée puis ses voisines. Le panneau affiche « Netteté AF : 87 % de la plus nette · rang 4 / 54 », en vert pour la plus nette, avec « (mesure 30 / 54) » tant que toute la rafale n'est pas mesurée. **N** va à la vue la plus nette (parmi celles qui passent le filtre). La mesure ne ralentit pas le défilé : elle s'interrompt dès que tu reprends. Deux limites : l'indice ne compare que les vues d'une même rafale (rien pour une vue isolée), et il mesure ce qui est dans la zone AF : si l'AF a visé le col plutôt que le visage, l'indice baisse aussi. Regarde alors le cadre vert. Comme la loupe normale, elle s'affiche à l'arrêt, une fois la pleine résolution chargée.
 - **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X. Une case décochée montre sa coche ou sa croix en gris. La rangée « Rafale », en dessous, marque de la même façon la rafale de la photo affichée.
 - **Barre de filtre en bas de la liste** (mêmes commandes) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. La rangée « Rafales », en dessous, filtre les rafales : une étoile = rafales notées au moins autant, ✓ = rafales retenues ; seules les photos des rafales qui passent sont montrées, et le filtre des photos s'y ajoute. « effacer » supprime les deux. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
 - **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre). En vue À plat, ou dans la grille d'une rafale bloquée, un clic sur une vignette affiche cette photo.
 - **Molette au-dessus du panneau :** fait défiler la liste. Elle se recentre dès que tu changes de rafale.
 - **Ascenseur à droite de la liste :** tu peux le faire glisser. Un clic sur la piste y amène directement le curseur.
+
+## Live GND
+
+Si la photo a été prise avec le Live GND du boîtier (dégradé calculé par l'appareil, OM-1 Mk II), le haut du panneau affiche son code comme à l'écran de l'appareil : **GND4-S** pour une densité de 4 (2 EV ; GND2 = 1 EV, GND8 = 3 EV) et une transition douce (S ; M moyenne, H dure). Le **disque** à côté montre l'orientation approximative de la ligne : le demi-disque noir est du côté sombre, le blanc du côté clair.
+
+**G** dessine la ligne de transition sur la photo. Elle n'est pas affichée au lancement. Pour une photo recadrée dans un autre format que le 4:3, sa position est approximative. Ces informations ne sont pas documentées par le fabricant : elles ont été relevées sur des vues d'essai, à l'écran du boîtier.
 
 ## Marquer les photos
 

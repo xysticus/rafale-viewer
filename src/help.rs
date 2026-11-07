@@ -16,21 +16,30 @@ le défilé ralentit au lieu de sauter des photos.
 • En rouvrant un dossier, Rafale repart de la dernière photo vue.
 • Pendant le défilé, les photos sont en aperçu réduit. Au relâchement, la pleine \
 résolution arrive en un quart de seconde.
-• À l'arrêt, pose le pointeur sur la photo : une loupe 100 % montre les pixels réels. \
-C'est là qu'on vérifie la netteté, sur un visage par exemple.
-• Un clic sur la photo fige la loupe à cet endroit : elle y reste d'une vue à \
+• La loupe 100 % est coupée au démarrage : L l'active. À l'arrêt, pose alors le \
+pointeur sur la photo pour voir les pixels réels. C'est là qu'on vérifie la netteté, \
+sur un visage par exemple.
+• Loupe activée, un clic sur la photo la fige à cet endroit : elle y reste d'une vue à \
 l'autre (← →), pour comparer la netteté du même visage sur toute la rafale. \
 Clic droit pour la libérer ; elle l'est aussi en changeant de rafale.
 • Le cadre vert sur la photo est la zone de mise au point enregistrée par le \
 boîtier (OM System) : elle suit le sujet, souvent le visage détecté. Masqué au \
 démarrage, C l'affiche ou le masque. La touche A \
-place la loupe sur cette zone, vue après vue : elle suit le visage dans toute la \
+active la loupe et la place sur cette zone, vue après vue : elle suit le visage dans toute la \
 rafale, même s'il se déplace dans le cadre.
 • À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue \
 de la rafale, et affiche celle de la photo : « 87 % de la plus nette · rang 4 / 54 ». \
 N va à la vue la plus nette. L'indice mesure ce qui est dans la zone AF : si \
 l'AF a visé le col au lieu du visage, il baisse aussi. La mesure ne ralentit \
 jamais le défilé : elle s'interrompt dès qu'il reprend.
+
+LIVE GND
+
+• Sur une photo prise avec le Live GND du boîtier (OM System), le haut du panneau \
+donne son code, comme à l'écran de l'appareil : GND4-S pour 4 (2 EV) en transition \
+douce (S, M ou H). Le disque à côté montre l'orientation de la ligne, avec le \
+demi-disque noir du côté sombre et le blanc du côté clair. G dessine la ligne de \
+transition sur la photo.
 
 RAFALES ET VUE À PLAT
 
@@ -177,9 +186,14 @@ Ctrl+C : copie la sélection (filtrées, sinon retenues) ; Ctrl+V dans Fichiers
 
 LOUPE
 
-A : loupe sur la zone AF (cadre vert) ↔ loupe sous le pointeur
+L : active ↔ coupe la loupe (coupée au démarrage)
+A : active la loupe sur la zone AF (cadre vert) ↔ loupe sous le pointeur
 C : affiche ↔ masque le cadre vert de la zone AF
 N : vue la plus nette de la rafale (netteté de la zone AF)
+
+LIVE GND
+
+G : affiche ↔ masque la ligne de transition sur la photo
 
 FENÊTRE
 
@@ -188,8 +202,8 @@ Ctrl+Q : quitter
 
 SOURIS
 
-Pointeur sur la photo, à l'arrêt : loupe 100 %
-Clic sur la photo : fige la loupe à cet endroit (un autre clic la déplace)
+Pointeur sur la photo, à l'arrêt, loupe activée (L) : loupe 100 %
+Clic sur la photo, loupe activée : la fige à cet endroit (un autre clic la déplace)
 Clic droit : libère la loupe figée (libérée aussi en changeant de rafale)
 Étoiles, couleurs, ✓, ✕ en haut du panneau : marquage de la photo affichée
 (re-clic sur la même étoile ou couleur : l'enlève)

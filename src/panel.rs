@@ -13,6 +13,8 @@ use crate::marks::{BurstMark, Color};
 use crate::meta::Meta;
 
 pub const PADDING: f32 = 24.0;
+/// Marge au-dessus des commandes de marquage.
+const INFO_TOP: f32 = 14.0;
 pub const THUMBS_PER_ROW: usize = 4;
 const THUMB_GAP: f32 = 8.0;
 const ROW_HEADER: f32 = 25.0;
@@ -23,7 +25,9 @@ const MARKED: [u8; 3] = [110, 210, 120];
 const CTRL: f32 = 22.0;
 const CTRL_GAP: f32 = 18.0;
 /// Écart entre la rangée de la photo et celle de sa rafale.
-const BURST_ROW_GAP: f32 = 10.0;
+const BURST_ROW_GAP: f32 = 8.0;
+/// Disque du Live GND, à côté de son code.
+const GND_DISC: f32 = 20.0;
 const STAR_ON: [u8; 3] = [235, 190, 60];
 const OFF: [u8; 3] = [85, 85, 85];
 const CHECK_ON: [u8; 3] = [80, 175, 85];
@@ -114,6 +118,21 @@ pub struct Line {
     pub color: [u8; 3],
     /// Espace ajouté au-dessus de la ligne.
     pub gap: f32,
+    /// Texte aligné à droite sur la même ligne, et sa couleur.
+    pub right: String,
+    pub right_color: [u8; 3],
+}
+
+/// Haut du panneau : rangées de commandes et ce qu'on lit à leur droite.
+pub struct Info<'a> {
+    pub controls: &'a Controls,
+    /// Rangée de la rafale, si son marquage est possible.
+    pub burst: Option<&'a Controls>,
+    pub locked: bool,
+    /// État de la photo en toutes lettres, et sa couleur.
+    pub mark: (&'a str, [u8; 3]),
+    /// Live GND : code du boîtier et direction du côté sombre.
+    pub gnd: Option<(&'a str, (f32, f32))>,
 }
 
 /// Une rafale telle qu'affichée dans la liste.
@@ -380,6 +399,19 @@ impl Canvas {
         self.polyline(&pts, s * 0.13, rgb);
     }
 
+    /// Disque du Live GND dans le carré (x, y, s), comme à l'écran du boîtier : un
+    /// demi-disque noir du côté sombre, un blanc de l'autre, cerclés de clair.
+    fn gnd_disc(&mut self, x: f32, y: f32, s: f32, (dx, dy): (f32, f32)) {
+        let (cx, cy, r) = (x + s / 2.0, y + s / 2.0, s / 2.0);
+        let inside = move |px: f32, py: f32| (px - cx).hypot(py - cy) <= r;
+        self.shape(x, y, s, s, [245, 245, 245], 1.0, inside);
+        self.shape(x, y, s, s, [15, 15, 15], 1.0, move |px, py| inside(px, py) && (px - cx) * dx + (py - cy) * dy > 0.0);
+        self.shape(x, y, s, s, [245, 245, 245], 1.0, move |px, py| {
+            let d = (px - cx).hypot(py - cy);
+            d <= r && d >= r - 1.5
+        });
+    }
+
     /// Triangle d'avertissement (⚠) dans le carré (x, y, s).
     fn warning(&mut self, x: f32, y: f32, s: f32) {
         let pts = [(x + s / 2.0, y), (x + s, y + s * 0.92), (x, y + s * 0.92)];
@@ -566,14 +598,14 @@ impl Panel {
         }
     }
 
-    /// Rend la rangée de commandes de la photo, celle de sa rafale (`burst`, si
-    /// son marquage est possible), puis les lignes d'informations, en largeur `width`.
-    pub fn render_info(&self, width: u32, controls: &Controls, burst: Option<&Controls>, locked: bool, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
+    /// Rend la rangée de commandes de la photo, celle de sa rafale (si son
+    /// marquage est possible), puis les lignes d'informations, en largeur `width`.
+    pub fn render_info(&self, width: u32, info: &Info, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
         let Some(font) = &self.font else {
             return (vec![0; 4], 1, 1, Vec::new());
         };
-        let burst_y = PADDING + CTRL + BURST_ROW_GAP;
-        let mut y = if burst.is_some() { burst_y + CTRL } else { PADDING + CTRL } + 6.0;
+        let burst_y = INFO_TOP + CTRL + BURST_ROW_GAP;
+        let mut y = if info.burst.is_some() { burst_y + CTRL } else { INFO_TOP + CTRL } + 6.0;
         let mut baselines = Vec::with_capacity(lines.len());
         for line in lines {
             let m = font.horizontal_line_metrics(line.size).unwrap();
@@ -582,10 +614,22 @@ impl Panel {
             y += -m.descent + m.line_gap;
         }
         // Double trait en bas : sépare les informations de la liste des rafales.
-        let height = (y + PADDING / 2.0 + 10.0).ceil() as u32;
+        let height = (y + 16.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
-        let mut hits = canvas.controls(PADDING, PADDING, controls);
-        if let Some(c) = burst {
+        let mut hits = canvas.controls(PADDING, INFO_TOP, info.controls);
+        let locked = info.locked;
+        // À droite des commandes : l'état de la photo, puis le Live GND calé à droite.
+        let mut mark_end = width as f32 - PADDING / 2.0;
+        if let Some((label, dark)) = info.gnd {
+            let x = width as f32 - PADDING - text_width(font, label, 16.0);
+            canvas.text(font, x, INFO_TOP + 17.0, width as f32, label, 16.0, [235, 235, 235]);
+            let disc = x - GND_DISC - 6.0;
+            canvas.gnd_disc(disc, INFO_TOP + 1.0, GND_DISC, dark);
+            mark_end = disc - 8.0;
+        }
+        let mark_x = hits.last().map_or(PADDING, |h| h.x + h.w) + 14.0;
+        canvas.text(font, mark_x, INFO_TOP + 17.0, mark_end, info.mark.0, 16.0, info.mark.1);
+        if let Some(c) = info.burst {
             // « Rafale » (cadenas bleu devant, si elle est bloquée) puis ses
             // étoiles ; ✓ et ✕ sous ceux de la photo.
             let mut x = PADDING;
@@ -605,13 +649,20 @@ impl Panel {
         }
         let max_x = width as f32 - PADDING / 2.0;
         for (line, &baseline) in lines.iter().zip(&baselines) {
+            // Le texte de droite d'abord : celui de gauche s'arrête avant lui.
+            let mut end = max_x;
+            if !line.right.is_empty() {
+                let x = width as f32 - PADDING - text_width(font, &line.right, line.size);
+                canvas.text(font, x, baseline, width as f32, &line.right, line.size, line.right_color);
+                end = x - 12.0;
+            }
             match line.text.strip_prefix('⚠') {
                 Some(rest) => {
                     let s = line.size;
                     canvas.warning(PADDING, baseline - s * 0.85, s);
-                    canvas.text(font, PADDING + s + 4.0, baseline, max_x, rest.trim_start(), line.size, line.color);
+                    canvas.text(font, PADDING + s + 4.0, baseline, end, rest.trim_start(), line.size, line.color);
                 }
-                None => canvas.text(font, PADDING, baseline, max_x, &line.text, line.size, line.color),
+                None => canvas.text(font, PADDING, baseline, end, &line.text, line.size, line.color),
             }
         }
         (canvas.pixels, width, height, hits)
@@ -846,8 +897,11 @@ pub fn spread(indices: &[usize], n: usize) -> Vec<usize> {
 }
 
 fn button_width(font: &Font, label: &str) -> f32 {
-    let text: f32 = label.chars().map(|c| font.metrics(c, 15.0).advance_width).sum();
-    (text + 20.0).round()
+    (text_width(font, label, 15.0) + 20.0).round()
+}
+
+fn text_width(font: &Font, text: &str, size: f32) -> f32 {
+    text.chars().map(|c| font.metrics(c, size).advance_width).sum()
 }
 
 fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {

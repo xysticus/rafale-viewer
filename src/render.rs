@@ -89,6 +89,10 @@ pub struct Renderer {
     border_pinned: Quad,
     /// Cadre de la zone AF sur la photo (un quad par côté), et bordure de la loupe AF.
     af_frame: [Quad; 4],
+    /// Ligne du Live GND sur la photo : contour sombre, puis trait blanc.
+    gnd_outline: Quad,
+    gnd_line: Quad,
+    gnd_points: Option<[(f32, f32); 2]>,
     af_rect: Option<[f32; 4]>,
     border_af: Quad,
     /// Repère de position dans la rafale courante (rectangle blanc).
@@ -228,6 +232,14 @@ impl Renderer {
         let border_pinned = make_quad(&device, &layout, &nearest, &border_pinned);
         let green = upload(&device, &queue, &AF_COLOR, 1, 1);
         let af_frame = std::array::from_fn(|_| make_quad(&device, &layout, &nearest, &green));
+        // Texture d'une colonne, lissée : bords adoucis quand le trait est en biais.
+        let stroke = |rgb: u8| -> Vec<u8> {
+            [0u8, 255, 255, 255, 255, 0].iter().flat_map(|&a| [rgb, rgb, rgb, a]).collect()
+        };
+        let gnd_outline = upload(&device, &queue, &stroke(0), 1, 6);
+        let gnd_outline = make_quad(&device, &layout, &linear, &gnd_outline);
+        let gnd_line = upload(&device, &queue, &stroke(255), 1, 6);
+        let gnd_line = make_quad(&device, &layout, &linear, &gnd_line);
         let border_af = make_quad(&device, &layout, &nearest, &green);
         // Photo active : bleu, en vue rafales (repère) comme à plat (cadre).
         let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
@@ -251,6 +263,9 @@ impl Renderer {
             border,
             border_pinned,
             af_frame,
+            gnd_outline,
+            gnd_line,
+            gnd_points: None,
             af_rect: None,
             border_af,
             marker,
@@ -287,6 +302,23 @@ impl Renderer {
 
     /// Place un quad : `dst` en pixels écran, `src` en [0, 1] dans l'image orientée.
     fn place(&self, quad: &Quad, dst: Rect, src: [f32; 4], orientation: u32) {
+        self.place_rotated(quad, dst, src, orientation, [0.0, 0.0]);
+    }
+
+    /// Trait de `a` à `b` (pixels écran), d'épaisseur `width`.
+    fn place_stroke(&self, quad: &Quad, a: (f32, f32), b: (f32, f32), width: f32) {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = dx.hypot(dy).max(1.0);
+        let dst = Rect {
+            x: (a.0 + b.0 - len) / 2.0,
+            y: (a.1 + b.1 - width) / 2.0,
+            w: len,
+            h: width,
+        };
+        self.place_rotated(quad, dst, [0.0, 0.0, 1.0, 1.0], 1, [dx / len, dy / len]);
+    }
+
+    fn place_rotated(&self, quad: &Quad, dst: Rect, src: [f32; 4], orientation: u32, rotation: [f32; 2]) {
         let (ww, wh) = self.window_size();
         let ndc = [
             dst.x / ww * 2.0 - 1.0,
@@ -299,6 +331,9 @@ impl Renderer {
             params[i] = v.to_bits();
         }
         params[8] = orientation;
+        params[9] = (wh / ww).to_bits();
+        params[10] = rotation[0].to_bits();
+        params[11] = rotation[1].to_bits();
         self.queue
             .write_buffer(&quad.params, 0, bytemuck::cast_slice(&params));
     }
@@ -344,6 +379,13 @@ impl Renderer {
     pub fn set_af(&mut self, rect: Option<[f32; 4]>) -> bool {
         let changed = rect != self.af_rect;
         self.af_rect = rect;
+        changed
+    }
+
+    /// Ligne du Live GND, en proportions de la photo ; renvoie `true` si elle a changé.
+    pub fn set_gnd_line(&mut self, points: Option<[(f32, f32); 2]>) -> bool {
+        let changed = points != self.gnd_points;
+        self.gnd_points = points;
         changed
     }
 
@@ -478,6 +520,13 @@ impl Renderer {
                     self.place(quad, side, full_src, 1);
                     draws.push(quad);
                 }
+            }
+            if let Some([a, b]) = self.gnd_points {
+                let at = |(u, v): (f32, f32)| (r.x + u * r.w, r.y + v * r.h);
+                self.place_stroke(&self.gnd_outline, at(a), at(b), 7.0);
+                self.place_stroke(&self.gnd_line, at(a), at(b), 4.0);
+                draws.push(&self.gnd_outline);
+                draws.push(&self.gnd_line);
             }
         }
         if let Some(p) = &self.panel {

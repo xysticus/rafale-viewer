@@ -34,6 +34,65 @@ pub struct Meta {
     /// Zone de mise au point (OM System / Olympus) : x, y, largeur, hauteur en
     /// proportions de l'image du capteur, avant orientation.
     pub af: Option<[f32; 4]>,
+    /// Filtre Live GND du boîtier (OM System).
+    pub gnd: Option<Gnd>,
+}
+
+/// Réglages du Live GND (dégradé calculé par le boîtier), tels qu'à la prise de vue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gnd {
+    /// Densité : 2, 4 ou 8 (1, 2 ou 3 EV).
+    pub density: u8,
+    /// Transition : 'S' douce, 'M' moyenne, 'H' dure.
+    pub transition: char,
+    /// Angle en degrés, repère du capteur : 0 = sombre en haut, 180 = en bas.
+    pub angle: u16,
+    /// Point de passage de la ligne, de -60 à 60 en soixantièmes de demi-largeur
+    /// et de demi-hauteur depuis le centre, repère du capteur.
+    pub px: i16,
+    pub py: i16,
+}
+
+/// Le Live GND sur la photo telle qu'affichée (orientation appliquée).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GndView {
+    /// Extrémités de la ligne de transition, en proportions de la photo.
+    pub line: [(f32, f32); 2],
+    /// Direction du côté sombre, vecteur unitaire (x vers la droite, y vers le bas).
+    pub dark: (f32, f32),
+}
+
+impl Gnd {
+    /// Libellé du boîtier : « GND4-S ».
+    pub fn label(&self) -> String {
+        format!("GND{}-{}", self.density, self.transition)
+    }
+
+    /// Géométrie affichée. Le capteur est supposé en 4:3 : la photo recadrée en
+    /// un autre format aurait sa ligne légèrement décalée.
+    pub fn view(&self, orientation: u8) -> GndView {
+        const SENSOR: (f32, f32) = (4.0, 3.0);
+        let (sin, cos) = (self.angle as f32).to_radians().sin_cos();
+        let center = (0.5 + self.px as f32 / 120.0, 0.5 + self.py as f32 / 120.0);
+        // La ligne, en proportions, découpée sur les bords de la photo.
+        let along = (cos / SENSOR.0, sin / SENSOR.1);
+        let (mut from, mut to) = (f32::MIN, f32::MAX);
+        for (c, d) in [(center.0, along.0), (center.1, along.1)] {
+            if d.abs() > 1e-6 {
+                let (a, b) = (-c / d, (1.0 - c) / d);
+                from = from.max(a.min(b));
+                to = to.min(a.max(b));
+            }
+        }
+        let point = |t: f32| orient_point(center.0 + t * along.0, center.1 + t * along.1, orientation);
+        // Côté sombre : petit pas perpendiculaire à la ligne, mesuré sur la photo affichée.
+        let (w, h) = if orientation >= 5 { (SENSOR.1, SENSOR.0) } else { SENSOR };
+        let (x0, y0) = orient_point(center.0, center.1, orientation);
+        let (x1, y1) = orient_point(center.0 + sin / SENSOR.0, center.1 - cos / SENSOR.1, orientation);
+        let (dx, dy) = ((x1 - x0) * w, (y1 - y0) * h);
+        let n = dx.hypot(dy).max(1e-6);
+        GndView { line: [point(from), point(to)], dark: (dx / n, dy / n) }
+    }
 }
 
 impl Meta {
@@ -46,7 +105,13 @@ impl Meta {
 /// Rectangle en proportions du capteur → proportions de l'image orientée
 /// (même correspondance que le shader et `panel::orient`).
 fn orient_rect([x, y, w, h]: [f32; 4], orientation: u8) -> [f32; 4] {
-    let map = |u: f32, v: f32| match orientation {
+    let (a, b) = (orient_point(x, y, orientation), orient_point(x + w, y + h, orientation));
+    [a.0.min(b.0), a.1.min(b.1), (a.0 - b.0).abs(), (a.1 - b.1).abs()]
+}
+
+/// Point en proportions du capteur → proportions de l'image orientée.
+fn orient_point(u: f32, v: f32, orientation: u8) -> (f32, f32) {
+    match orientation {
         2 => (1.0 - u, v),
         3 => (1.0 - u, 1.0 - v),
         4 => (u, 1.0 - v),
@@ -55,9 +120,7 @@ fn orient_rect([x, y, w, h]: [f32; 4], orientation: u8) -> [f32; 4] {
         7 => (1.0 - v, 1.0 - u),
         8 => (v, 1.0 - u),
         _ => (u, v),
-    };
-    let (a, b) = (map(x, y), map(x + w, y + h));
-    [a.0.min(b.0), a.1.min(b.1), (a.0 - b.0).abs(), (a.1 - b.1).abs()]
+    }
 }
 
 /// `next` prolonge-t-elle la rafale de `prev` ?
@@ -87,6 +150,7 @@ pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, wake: Waker) {
                         thumb: None,
                         orientation: 1,
                         af: None,
+                        gnd: None,
                     }
                 });
                 if tx.send((i, meta)).is_err() {
@@ -160,6 +224,7 @@ fn read_meta(path: &std::path::Path) -> Option<Meta> {
         thumb,
         orientation,
         af: olympus.af,
+        gnd: olympus.gnd,
     })
 }
 
@@ -262,6 +327,7 @@ struct Olympus {
     picture_mode: Option<String>,
     noise_filter: Option<&'static str>,
     af: Option<[f32; 4]>,
+    gnd: Option<Gnd>,
 }
 
 /// Réglages lus dans CameraSettings (balise 0x2020) de la MakerNote
@@ -350,11 +416,45 @@ fn olympus_settings(mn: &[u8]) -> Option<Olympus> {
             [x as f32 / fw, y as f32 / fh, w as f32 / fw, h as f32 / fh]
         })
     });
+    // Live GND, relevé sur OM-1 Mk II. Mode empilé 0x0804 (deux valeurs 32 bits) :
+    // [13, densité]. Paramètres dans ImageProcessing (0x2040), tag 0x1700, valeurs
+    // 16 bits : [0] transition, [6] et [7] position, [8] angle.
+    let gnd = (|| {
+        let stacked = find(settings, 0x0804)?;
+        if u16_at(stacked + 2)? != 4 || u32_at(stacked + 4)? != 2 {
+            return None;
+        }
+        let base = u32_at(stacked + 8)?;
+        if u32_at(base)? != 13 {
+            return None;
+        }
+        let density = u32_at(base + 4)?;
+        if ![2, 4, 8].contains(&density) {
+            return None;
+        }
+        let processing = u32_at(find(start, 0x2040)? + 8)?;
+        let params = u32_at(find(processing, 0x1700)? + 8)?;
+        let at = |k: usize| u16_at(params + 2 * k);
+        let transition = match at(0)? {
+            6553 => 'S',
+            3276 => 'M',
+            1638 => 'H',
+            _ => return None,
+        };
+        Some(Gnd {
+            density: density as u8,
+            transition,
+            angle: at(8)?,
+            px: at(6)? as i16,
+            py: at(7)? as i16,
+        })
+    })();
     Some(Olympus {
         drive,
         picture_mode,
         noise_filter,
         af,
+        gnd,
     })
 }
 
@@ -370,7 +470,71 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::orient_rect;
+    use super::{Gnd, olympus_settings, orient_rect};
+
+    fn gnd(angle: u16, px: i16, py: i16) -> Gnd {
+        Gnd { density: 4, transition: 'S', angle, px, py }
+    }
+
+    fn close(a: (f32, f32), b: (f32, f32)) -> bool {
+        (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3
+    }
+
+    #[test]
+    fn gnd_geometrie() {
+        // Reset du boîtier (PB070100) : sombre en haut, ligne horizontale au milieu.
+        let v = gnd(0, 0, 0).view(1);
+        assert!(close(v.dark, (0.0, -1.0)));
+        assert!(close(v.line[0], (0.0, 0.5)) && close(v.line[1], (1.0, 0.5)));
+        // Sombre en bas, ligne tout en bas (PB070087, position 60).
+        let v = gnd(180, 3, 60).view(1);
+        assert!(close(v.dark, (0.0, 1.0)));
+        assert!((v.line[0].1 - 1.0).abs() < 1e-3 && (v.line[1].1 - 1.0).abs() < 1e-3);
+        // PB070091 : 345°, la ligne monte vers la droite, sombre en haut à gauche.
+        let v = gnd(345, 0, -36).view(1);
+        assert!(v.dark.0 < 0.0 && v.dark.1 < 0.0);
+        let (l, r) = if v.line[0].0 < v.line[1].0 { (v.line[0], v.line[1]) } else { (v.line[1], v.line[0]) };
+        assert!(r.1 < l.1);
+        // PB070092 : 150°, sombre en bas à droite.
+        let v = gnd(150, 0, 20).view(1);
+        assert!(v.dark.0 > 0.0 && v.dark.1 > 0.0);
+        // PB070009 : 270° sur une photo en portrait (orientation 8), sombre en bas.
+        let v = gnd(270, -12, 4).view(8);
+        assert!(close(v.dark, (0.0, 1.0)));
+    }
+
+    #[test]
+    fn gnd_lu_dans_la_makernote() {
+        // MakerNote minimale : racine à 16, CameraSettings à 60, ImageProcessing à 100.
+        let mut mn = vec![0u8; 300];
+        mn[..10].copy_from_slice(b"OM SYSTEM\0");
+        let mut u16_put = |o: usize, v: u16| mn[o..o + 2].copy_from_slice(&v.to_le_bytes());
+        let entry = |mn: &mut Vec<u8>, o: usize, tag: u16, ty: u16, n: u32, v: u32| {
+            mn[o..o + 2].copy_from_slice(&tag.to_le_bytes());
+            mn[o + 2..o + 4].copy_from_slice(&ty.to_le_bytes());
+            mn[o + 4..o + 8].copy_from_slice(&n.to_le_bytes());
+            mn[o + 8..o + 12].copy_from_slice(&v.to_le_bytes());
+        };
+        u16_put(16, 2);
+        u16_put(60, 1);
+        u16_put(100, 1);
+        entry(&mut mn, 18, 0x2020, 13, 1, 60);
+        entry(&mut mn, 30, 0x2040, 13, 1, 100);
+        entry(&mut mn, 62, 0x0804, 4, 2, 140);
+        entry(&mut mn, 102, 0x1700, 7, 976, 160);
+        mn[140..144].copy_from_slice(&13u32.to_le_bytes());
+        mn[144..148].copy_from_slice(&8u32.to_le_bytes());
+        mn[160..162].copy_from_slice(&3276u16.to_le_bytes());
+        mn[172..174].copy_from_slice(&(-36i16).to_le_bytes());
+        mn[174..176].copy_from_slice(&20i16.to_le_bytes());
+        mn[176..178].copy_from_slice(&345u16.to_le_bytes());
+        let g = olympus_settings(&mn).unwrap().gnd.unwrap();
+        assert_eq!(g, Gnd { density: 8, transition: 'M', angle: 345, px: -36, py: 20 });
+        assert_eq!(g.label(), "GND8-M");
+        // Pas de GND : mode empilé 0 0 (ou HDR).
+        mn[140..144].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(olympus_settings(&mn).unwrap().gnd, None);
+    }
 
     #[test]
     fn zone_af_orientee() {
