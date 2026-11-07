@@ -19,10 +19,17 @@ install -Dm644 "$root/packaging/rafale-viewer.svg" "$data/icons/hicolor/scalable
 sed "s|^Exec=rafale-viewer|Exec=$HOME/.local/bin/rafale-viewer|" \
     "$root/packaging/rafale-viewer.desktop" > "$data/applications/rafale-viewer.desktop"
 chmod 644 "$data/applications/rafale-viewer.desktop"
+# Entrée directe du clic droit dans Fichiers ; sans le paquet nautilus-python, le fichier reste inutilisé.
+install -Dm644 "$root/packaging/rafale-nautilus.py" "$data/nautilus-python/extensions/rafale-nautilus.py"
 
 update-desktop-database "$data/applications" 2>/dev/null || true
 gtk-update-icon-cache -q -t "$data/icons/hicolor" 2>/dev/null || true
 
 echo "Rafale $("$HOME/.local/bin/rafale-viewer" --version | cut -d' ' -f2) installé."
 echo "Menu des applications : « Rafale »."
-echo "Fichiers : clic droit sur un dossier ou une photo › Ouvrir avec… › Rafale."
+if rpm -q nautilus-python >/dev/null 2>&1; then
+    echo "Fichiers : clic droit sur un dossier ou une photo › Ouvrir dans Rafale (après « nautilus -q »)."
+else
+    echo "Fichiers : clic droit sur un dossier ou une photo › Ouvrir avec… › Rafale."
+    echo "Pour un accès direct au clic droit : sudo dnf install nautilus-python, puis nautilus -q."
+fi

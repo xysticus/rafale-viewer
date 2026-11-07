@@ -27,7 +27,7 @@ Le script copie le programme dans `~/.local/bin`, et installe l'icône et l'entr
 ## Lancement
 
 - **Menu des applications :** « Rafale ». Une fenêtre demande le dossier à trier.
-- **Fichiers :** clic droit sur un dossier, ou sur une photo, puis *Ouvrir avec… › Rafale*. Sur une photo, Rafale ouvre son dossier en commençant par elle.
+- **Fichiers :** clic droit sur un dossier, sur une photo ou sur le fond de la fenêtre, puis **Ouvrir dans Rafale**. Sur une photo, Rafale ouvre son dossier en commençant par elle. Cette entrée demande le paquet `nautilus-python` (`sudo dnf install nautilus-python`, puis `./packaging/install.sh` et `nautilus -q`) ; sans lui, passe par *Ouvrir avec… › Rafale*.
 - **Terminal :**
 
 ```
