@@ -110,6 +110,9 @@ pub struct Renderer {
     panel: Option<PanelTex>,
     /// Liste des rafales, sous les informations.
     list: Option<PanelTex>,
+    /// Fenêtre zenity ouverte : voile sombre sur toute la fenêtre, et message au centre.
+    veil: Quad,
+    modal: Option<PanelTex>,
 }
 
 impl Renderer {
@@ -245,6 +248,8 @@ impl Renderer {
         let blue = upload(&device, &queue, &[60, 140, 255, 255], 1, 1);
         let marker = make_quad(&device, &layout, &nearest, &blue);
         let frame = std::array::from_fn(|_| make_quad(&device, &layout, &nearest, &blue));
+        let veil = upload(&device, &queue, &[0, 0, 0, 170], 1, 1);
+        let veil = make_quad(&device, &layout, &nearest, &veil);
         let track = upload(&device, &queue, &[40, 40, 40, 255], 1, 1);
         let track = make_quad(&device, &layout, &nearest, &track);
         let thumb = upload(&device, &queue, &[120, 120, 120, 255], 1, 1);
@@ -278,6 +283,8 @@ impl Renderer {
             shown: None,
             panel: None,
             list: None,
+            veil,
+            modal: None,
         }
     }
 
@@ -429,6 +436,19 @@ impl Renderer {
         let changed = bar != self.scrollbar;
         self.scrollbar = bar;
         changed
+    }
+
+    /// Voile et message par-dessus tout, pendant qu'une fenêtre zenity attend une
+    /// réponse ; None pour les retirer. Renvoie `true` si l'état a changé.
+    pub fn set_modal(&mut self, message: Option<(&[u8], u32, u32)>) {
+        self.modal = message.map(|(pixels, width, height)| {
+            let view = self.upload(pixels, width, height);
+            PanelTex { quad: self.quad(&view, true), width: width as f32, height: height as f32 }
+        });
+    }
+
+    pub fn has_modal(&self) -> bool {
+        self.modal.is_some()
     }
 
     pub fn set_list(&mut self, pixels: &[u8], width: u32, height: u32) {
@@ -597,6 +617,20 @@ impl Renderer {
             }
         }
 
+        // Fenêtre zenity ouverte : tout est voilé, Rafale attend sa réponse.
+        if let Some(m) = &self.modal {
+            let (ww, wh) = self.window_size();
+            self.place(&self.veil, Rect { x: 0.0, y: 0.0, w: ww, h: wh }, full_src, 1);
+            draws.push(&self.veil);
+            let dst = Rect {
+                x: ((ww - m.width) / 2.0).round(),
+                y: ((wh - m.height) / 2.0).round(),
+                w: m.width,
+                h: m.height,
+            };
+            self.place(&m.quad, dst, full_src, 1);
+            draws.push(&m.quad);
+        }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

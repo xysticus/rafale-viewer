@@ -42,6 +42,35 @@ const FLAT_MAX: usize = 300;
 /// Vue au lancement : à plat, sauf si une rafale dépasse ce nombre de photos.
 const FLAT_BURST_MAX: usize = 5;
 
+/// Intervalle de vérification de la fermeture d'une fenêtre zenity.
+const DIALOG_POLL: Duration = Duration::from_millis(100);
+
+/// Fenêtre zenity, telle qu'il faut la relancer pour la rouvrir à l'identique.
+struct DialogSpec {
+    program: std::ffi::OsString,
+    args: Vec<std::ffi::OsString>,
+    /// Texte envoyé sur son entrée (aide).
+    stdin: Option<String>,
+    /// Sa sortie est lue (choix d'un logiciel, d'un dossier).
+    answer: bool,
+}
+
+impl DialogSpec {
+    fn spawn(&self) -> std::io::Result<Child> {
+        let mut c = Command::new(&self.program)
+            .args(&self.args)
+            .stdin(if self.stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+            .stdout(if self.answer { Stdio::piped() } else { Stdio::null() })
+            .stderr(Stdio::null())
+            .spawn()?;
+        // Le texte tient dans le tampon du tube ; fermer l'entrée marque la fin.
+        if let (Some(text), Some(mut stdin)) = (&self.stdin, c.stdin.take()) {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        Ok(c)
+    }
+}
+
 /// Action qui attend la réponse d'une fenêtre zenity.
 enum Pending {
     /// Fichiers à mettre à la corbeille si la confirmation est acceptée.
@@ -167,6 +196,10 @@ struct App {
     modifiers: Modifiers,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
     help: Option<Child>,
+    /// De quoi la rouvrir à l'identique : Wayland ne laisse pas Rafale ramener au
+    /// premier plan la fenêtre d'un autre programme, alors un clic sur la fenêtre
+    /// voilée la rouvre.
+    help_spec: Option<DialogSpec>,
     /// Action en attente de la réponse d'une fenêtre zenity, puis réponse reçue
     /// (acceptée, et ce que la fenêtre a écrit sur sa sortie).
     modal: Option<Pending>,
@@ -272,6 +305,7 @@ impl App {
             copy_message: String::new(),
             modifiers: Modifiers::default(),
             help: None,
+            help_spec: None,
             modal: None,
             answer: None,
             list_offset: 0,
@@ -386,6 +420,7 @@ impl App {
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
                 k @ ("l" | "a" | "c" | "n" | "g") if pressed => return self.tool(k.chars().next().unwrap()),
+                "v" if pressed => return self.toggle_view(),
                 // Rejet : X comme Lightroom, R comme darktable ; avec Maj, la rafale.
                 "x" | "r" if pressed && shift => return self.edit_burst_mark(BurstMark::toggle_rejected),
                 "x" | "r" if pressed => {
@@ -564,21 +599,52 @@ impl App {
         if self.help_open() {
             return;
         }
-        let child = Command::new("zenity")
-            .args(["--text-info", "--title", title, "--width=780", "--height=760"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        match child {
-            Ok(mut c) => {
-                // Le texte tient dans le tampon du tube ; fermer l'entrée marque la fin.
-                if let Some(mut stdin) = c.stdin.take() {
-                    let _ = stdin.write_all(text.as_bytes());
-                }
+        let mut cmd = Command::new("zenity");
+        cmd.args(["--text-info", "--title", title, "--width=780", "--height=760"]);
+        self.open_dialog(&cmd, Some(text.to_string()), false, None);
+    }
+
+    /// Ouvre une fenêtre zenity modale ; `answer` : sa sortie est lue (choix), et
+    /// `pending` attend sa réponse. Renvoie false si elle n'a pas pu s'ouvrir.
+    fn open_dialog(&mut self, cmd: &Command, stdin: Option<String>, answer: bool, pending: Option<Pending>) -> bool {
+        let spec = DialogSpec {
+            args: cmd.get_args().map(|a| a.to_os_string()).collect(),
+            program: cmd.get_program().to_os_string(),
+            stdin,
+            answer,
+        };
+        match spec.spawn() {
+            Ok(c) => {
                 self.help = Some(c);
+                self.help_spec = Some(spec);
+                if pending.is_some() {
+                    self.modal = pending;
+                }
+                true
             }
-            Err(e) => log::warn!("zenity : {e}"),
+            Err(e) => {
+                log::warn!("zenity : {e}");
+                false
+            }
+        }
+    }
+
+    /// Clic sur la fenêtre voilée, la fenêtre zenity toujours ouverte : on la rouvre,
+    /// pour qu'elle revienne au premier plan (l'action en attente est gardée).
+    fn raise_dialog(&mut self) {
+        let (Some(child), Some(spec)) = (self.help.as_mut(), self.help_spec.as_ref()) else { return };
+        if !matches!(child.try_wait(), Ok(None)) {
+            return;
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        match spec.spawn() {
+            Ok(c) => self.help = Some(c),
+            Err(e) => {
+                log::warn!("zenity : {e}");
+                self.help = None;
+                self.modal = None;
+            }
         }
     }
 
@@ -626,13 +692,7 @@ impl App {
             self.copy_message = "aucun logiciel de retouche trouvé".into();
             return;
         }
-        match retouch::chooser(then_retouch).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
-            Ok(c) => {
-                self.help = Some(c);
-                self.modal = Some(Pending::Editor(then_retouch));
-            }
-            Err(e) => log::warn!("zenity : {e}"),
-        }
+        self.open_dialog(&retouch::chooser(then_retouch), None, true, Some(Pending::Editor(then_retouch)));
     }
 
     fn retouch_with(&mut self, editor: &str) {
@@ -707,7 +767,7 @@ impl App {
                     1 => "\n\nAttention : une photo de cette rafale est retenue.".to_string(),
                     n => format!("\n\nAttention : {n} photos de cette rafale sont retenues."),
                 };
-                (format!("Mettre à la corbeille la rafale {} ({} photos) ?", b + 1, burst.len), warning, files)
+                (format!("Mettre à la corbeille la {} ({} photos) ?", burst_name(&self.bursts, b), burst.len), warning, files)
             }
             None => {
                 let rejected: Vec<usize> = (0..self.files.len()).filter(|&i| self.marks[i].rejected).collect();
@@ -732,19 +792,10 @@ impl App {
             files.len() - images,
             bytes as f64 / 1e6
         );
-        let child = Command::new("zenity")
-            .args(["--question", "--title", "Rafale", "--icon", "user-trash", "--text", &text])
-            .args(["--ok-label", "Mettre à la corbeille", "--cancel-label", "Annuler"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        match child {
-            Ok(c) => {
-                self.help = Some(c);
-                self.modal = Some(Pending::Trash(files));
-            }
-            Err(e) => log::warn!("zenity : {e}"),
-        }
+        let mut cmd = Command::new("zenity");
+        cmd.args(["--question", "--title", "Rafale", "--icon", "user-trash", "--text", &text])
+            .args(["--ok-label", "Mettre à la corbeille", "--cancel-label", "Annuler"]);
+        self.open_dialog(&cmd, None, false, Some(Pending::Trash(files)));
     }
 
     /// Réponse d'une fenêtre zenity : corbeille confirmée, ou logiciel choisi.
@@ -775,13 +826,8 @@ impl App {
             return;
         }
         let from = self.dir.parent().unwrap_or(&self.dir);
-        match folder_chooser(from).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
-            Ok(c) => {
-                self.help = Some(c);
-                self.modal = Some(Pending::Folder);
-            }
-            Err(e) => log::warn!("zenity : {e}"),
-        }
+        let cmd = folder_chooser(from);
+        self.open_dialog(&cmd, None, true, Some(Pending::Folder));
     }
 
     /// Passe au dossier `dir` sans fermer la fenêtre. Le filtre et la vue repartent
@@ -862,6 +908,10 @@ impl App {
         while let Some(next) = t.checked_add_signed(dir).filter(|&n| n < self.bursts.len()) {
             t = next;
             let burst = &self.bursts[t];
+            // Bloqué, on passe d'une vraie rafale à l'autre : une vue isolée ne se bloque pas.
+            if self.locked.is_some() && burst.len < 2 {
+                continue;
+            }
             if let Some(i) = self.first_visible_in(burst.start, burst.len) {
                 if self.locked.is_some() {
                     self.locked = Some(t);
@@ -1012,6 +1062,15 @@ impl App {
         }
     }
 
+    /// V : vue par rafales ↔ à plat ; à plat seulement pour les petits dossiers.
+    fn toggle_view(&mut self) {
+        if self.files.len() >= FLAT_MAX {
+            self.copy_message = format!("vue à plat : dossiers de moins de {FLAT_MAX} photos");
+            return;
+        }
+        self.bar_widget(if self.flat_view() { Widget::Bursts } else { Widget::Flat });
+    }
+
     /// Clic sur une commande de marquage (en haut du panneau).
     fn mark_widget(&mut self, widget: Widget) {
         match widget {
@@ -1034,6 +1093,7 @@ impl App {
             Widget::BurstCheck => self.edit_burst_mark(BurstMark::toggle_retained),
             Widget::BurstReject => self.edit_burst_mark(BurstMark::toggle_rejected),
             Widget::Tool(key) => self.tool(key),
+            Widget::Bursts | Widget::Flat | Widget::Principles | Widget::Shortcuts => self.bar_widget(widget),
             _ => {}
         }
     }
@@ -1195,8 +1255,10 @@ impl App {
             .and_then(|b| self.burst_issues(b).first().copied())
             .map(issue_text)
             .unwrap_or_default();
+        let flat_view = self.flat_view();
         let has_af = self.metas[self.cur].as_ref().is_some_and(|m| m.af.is_some());
         let can_sharpest = self.sharpness_rank().is_some();
+        let isolated = self.bursts_known() && self.burst_of.get(self.cur).is_some_and(|&b| self.bursts[b].len < 2);
         let burst = self.markable_burst().map(|b| {
             let bm = self.bursts[b].mark;
             Controls { rating: bm.rating, colors: [false; 5], check: bm.retained(), reject: bm.rejected }
@@ -1222,7 +1284,7 @@ impl App {
             reject: m.rejected,
         };
         let (mark, mark_color) = if m.foreign {
-            ("XMP externe, lecture seule".to_string(), [200, 150, 90])
+            ("XMP externe".to_string(), [200, 150, 90])
         } else if m.rejected {
             ("Rejetée".to_string(), [225, 85, 75])
         } else if m.retained() {
@@ -1257,9 +1319,10 @@ impl App {
             })
             .unwrap_or_default();
         let burst_text = match self.burst_of.get(self.cur) {
+            Some(&b) if self.bursts[b].len < 2 => "Vue isolée".to_string(),
             Some(&b) => format!(
                 "Rafale {}{}   vue {} / {}{}",
-                b + 1,
+                burst_number(&self.bursts, b).unwrap_or(0),
                 if self.locked == Some(b) { " bloquée" } else { "" },
                 self.cur - self.bursts[b].start + 1,
                 self.bursts[b].len,
@@ -1294,7 +1357,8 @@ impl App {
             Tool { key: 'G', label: "ligne GND", on: Some(self.gnd_line), enabled: gnd.is_some() },
         ];
         let key = format!(
-            "{width}|{tools:?}|{controls:?}|{burst:?}|{:?}|{mark}|{gnd:?}|{}",
+            "{width}|{}|{tools:?}|{controls:?}|{burst:?}|{isolated}|{:?}|{mark}|{gnd:?}|{}",
+            flat_view,
             self.locked,
             lines.iter().flat_map(|l| [l.text.as_str(), l.right.as_str()]).collect::<Vec<_>>().join("|")
         );
@@ -1302,9 +1366,12 @@ impl App {
             return;
         }
         let info = Info {
+            flat_available: self.files.len() < FLAT_MAX,
+            flat: flat_view,
             tools: &tools,
             controls: &controls,
             burst: burst.as_ref(),
+            isolated,
             locked: self.locked.is_some(),
             mark: (&mark, mark_color),
             gnd,
@@ -1361,8 +1428,9 @@ impl App {
             self.refresh_visible();
             let rates: Vec<f32> = self.bursts.iter().filter_map(|b| b.rate).collect();
             log::info!(
-                "{} rafales, rythme mesuré pour {} : {:?} i/s",
-                self.bursts.len(),
+                "{} rafales et {} vues isolées, rythme mesuré pour {} : {:?} i/s",
+                self.bursts.iter().filter(|b| b.len >= 2).count(),
+                self.bursts.iter().filter(|b| b.len < 2).count(),
                 rates.len(),
                 rates.iter().map(|r| format!("{r:.1}")).collect::<std::collections::BTreeSet<_>>()
             );
@@ -1387,13 +1455,18 @@ impl App {
         }
     }
 
+    /// Vue par rafales, analyse terminée (les bornes des rafales sont connues).
+    fn bursts_known(&self) -> bool {
+        !self.flat_view() && self.scanned == self.files.len()
+    }
+
     /// Rafale de la photo affichée, si son marquage est possible : vue par rafales,
-    /// analyse terminée (les bornes des rafales sont connues).
+    /// analyse terminée, et une vraie rafale (pas une vue isolée).
     fn markable_burst(&self) -> Option<usize> {
-        if self.flat_view() || self.scanned < self.files.len() {
+        if !self.bursts_known() {
             return None;
         }
-        self.burst_of.get(self.cur).copied()
+        self.burst_of.get(self.cur).copied().filter(|&b| self.bursts[b].len >= 2)
     }
 
     /// Modifie le marquage de la rafale affichée et l'enregistre dans son fichier `.rafale`.
@@ -1421,6 +1494,9 @@ impl App {
             return Vec::new();
         }
         let burst = &self.bursts[b];
+        if burst.len < 2 {
+            return Vec::new();
+        }
         marks::check_burst(&burst.mark, &self.marks[burst.range()])
     }
 
@@ -1432,9 +1508,9 @@ impl App {
         for b in 0..self.bursts.len() {
             for issue in self.burst_issues(b) {
                 match issue {
-                    Issue::NoRetained => empty.push(b + 1),
-                    Issue::RatingUnmet(_) => unmet.push(b + 1),
-                    Issue::RejectedWithRetained(_) => rejected.push(b + 1),
+                    Issue::NoRetained => empty.extend(burst_number(&self.bursts, b)),
+                    Issue::RatingUnmet(_) => unmet.extend(burst_number(&self.bursts, b)),
+                    Issue::RejectedWithRetained(_) => rejected.extend(burst_number(&self.bursts, b)),
                 }
             }
         }
@@ -1465,23 +1541,10 @@ impl App {
             return false;
         }
         let text = format!("Des rafales ne sont pas cohérentes avec leurs photos :\n\n{summary}");
-        let child = Command::new("zenity")
-            .args(["--question", "--title", "Rafale", "--icon", "dialog-warning", "--text", &text])
-            .args(["--ok-label", "Copier quand même", "--cancel-label", "Annuler"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        match child {
-            Ok(c) => {
-                self.help = Some(c);
-                self.modal = Some(pending);
-                true
-            }
-            Err(e) => {
-                log::warn!("zenity : {e}");
-                false
-            }
-        }
+        let mut cmd = Command::new("zenity");
+        cmd.args(["--question", "--title", "Rafale", "--icon", "dialog-warning", "--text", &text])
+            .args(["--ok-label", "Copier quand même", "--cancel-label", "Annuler"]);
+        self.open_dialog(&cmd, None, false, Some(pending))
     }
 
     fn set_burst_rating(&mut self, stars: u8) {
@@ -1531,9 +1594,9 @@ impl App {
             let room = fit.max(1) as usize * per;
             let shown = if members.len() > room { panel::spread(&members, room) } else { members.clone() };
             status = if shown.len() < members.len() {
-                format!("Rafale {} bloquée · {} vues sur {} · Entrée pour débloquer", b + 1, shown.len(), members.len())
+                format!("Rafale {} bloquée · {} vues sur {} · Entrée pour débloquer", burst_number(&self.bursts, b).unwrap_or(0), shown.len(), members.len())
             } else {
-                format!("Rafale {} bloquée · Entrée pour débloquer", b + 1)
+                format!("Rafale {} bloquée · Entrée pour débloquer", burst_number(&self.bursts, b).unwrap_or(0))
             };
             shown
         } else if !flat {
@@ -1602,7 +1665,7 @@ impl App {
                         shown: filtering.then_some(indices.len()),
                         picks: panel::spread(indices, panel::THUMBS_PER_ROW),
                         first: indices[0],
-                        number: i + 1,
+                        number: burst_number(&self.bursts, i),
                         rate: b.rate,
                         marked: self.marks[b.start..b.start + b.len]
                             .iter()
@@ -1626,7 +1689,7 @@ impl App {
         let filter_text = if filtering {
             format!("{} / {} photos", self.visible.len(), self.files.len())
         } else {
-            "Filtre : toutes les photos".to_string()
+            "aucun filtre".to_string()
         };
         let count = if filtering {
             self.visible.len()
@@ -1638,11 +1701,9 @@ impl App {
         let view = View {
             locked: locked.is_some(),
             trash_label: match trash_burst {
-                Some(b) => Some(format!("Corbeille : rafale {} ({} photos)", b + 1, self.bursts[b].len)),
+                Some(b) => Some(format!("Corbeille : {} ({} photos)", burst_name(&self.bursts, b), self.bursts[b].len)),
                 None => (rejected > 0).then(|| format!("Corbeille : {rejected} rejetée{}", if rejected > 1 { "s" } else { "" })),
             },
-            flat_available: self.files.len() < FLAT_MAX,
-            flat,
             copy_files: self.copy_files,
             count_label: format!("{count} {what}"),
             copy_message: self.copy_message.clone(),
@@ -1801,7 +1862,7 @@ impl App {
             Some(Job { index, .. }) if index == self.cur => "  · réduit",
             _ => "  · chargement…",
         };
-        let locked = self.locked.map(|b| format!("  · rafale {} bloquée", b + 1)).unwrap_or_default();
+        let locked = self.locked.map(|b| format!("  · {} bloquée", burst_name(&self.bursts, b))).unwrap_or_default();
         let title = format!("{name}  {}/{}{mark}{locked}{quality}", self.cur + 1, self.files.len());
         // set_title redessine les décorations, ce qui relance la boucle : seulement si changé.
         if title != self.title {
@@ -1925,6 +1986,24 @@ impl App {
             let t = self.last_change + FULL_DELAY;
             deadline = Some(deadline.map_or(t, |d: Instant| d.min(t)));
         }
+        // Fenêtre zenity ouverte : on vérifie régulièrement si elle s'est fermée, sa
+        // disparition à l'écran pouvant précéder la fin de son programme (sans quoi le
+        // voile resterait jusqu'au prochain mouvement de la souris).
+        if self.help.is_some() {
+            let t = now + DIALOG_POLL;
+            deadline = Some(deadline.map_or(t, |d: Instant| d.min(t)));
+        }
+        // Voile sur la fenêtre tant qu'une fenêtre zenity attend une réponse : Rafale
+        // ignore alors clavier et souris, et il faut que ça se voie.
+        if let Some(r) = self.renderer.as_mut().filter(|r| r.has_modal() != self.help.is_some()) {
+            let message = self.help.is_some().then(|| {
+                self.panel.render_message(&["Une fenêtre de Rafale attend ta réponse", "Clique ici pour la ramener au premier plan"])
+            });
+            r.set_modal(message.as_ref().map(|(p, w, h)| (p.as_slice(), *w, *h)));
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
         event_loop.set_control_flow(match deadline {
             Some(t) => ControlFlow::WaitUntil(t),
             None => ControlFlow::Wait,
@@ -2002,7 +2081,8 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            // Fenêtre d'aide ouverte : elle est modale.
+            // Fenêtre zenity ouverte : elle est modale ; un clic la ramène au premier plan.
+            WindowEvent::MouseInput { state: ElementState::Pressed, .. } if self.help_open() => self.raise_dialog(),
             WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. } | WindowEvent::KeyboardInput { .. }
                 if self.help_open() => {}
             WindowEvent::MouseInput {
@@ -2246,6 +2326,17 @@ fn issue_text(issue: Issue) -> (String, String) {
     }
 }
 
+/// Numéro de la rafale `b` parmi les vraies rafales (deux vues ou plus) ; une vue
+/// isolée n'en a pas. Il ne change plus une fois l'analyse terminée.
+fn burst_number(bursts: &[Burst], b: usize) -> Option<usize> {
+    (bursts[b].len >= 2).then(|| bursts[..=b].iter().filter(|r| r.len >= 2).count())
+}
+
+/// « rafale 12 », ou « vue isolée ».
+fn burst_name(bursts: &[Burst], b: usize) -> String {
+    burst_number(bursts, b).map_or_else(|| "vue isolée".to_string(), |n| format!("rafale {n}"))
+}
+
 /// Étoiles d'une touche chiffre (rangée du haut ou pavé numérique).
 fn digit(code: KeyCode) -> Option<u8> {
     Some(match code {
@@ -2467,6 +2558,17 @@ mod tests {
         // Le dernier dossier a disparu : on ne le propose plus.
         std::fs::remove_dir(&a).unwrap();
         assert_eq!(super::positions::last_dir(), None);
+    }
+
+    #[test]
+    fn vues_isolees_sans_numero() {
+        use super::{Burst, BurstMark, burst_name, burst_number};
+        let b = |len| Burst { start: 0, len, rate: None, mark: BurstMark::default(), file: None };
+        let bursts = [b(1), b(15), b(1), b(1), b(30), b(2)];
+        let numbers: Vec<_> = (0..bursts.len()).map(|i| burst_number(&bursts, i)).collect();
+        assert_eq!(numbers, [None, Some(1), None, None, Some(2), Some(3)]);
+        assert_eq!(burst_name(&bursts, 4), "rafale 2");
+        assert_eq!(burst_name(&bursts, 2), "vue isolée");
     }
 
     #[test]
