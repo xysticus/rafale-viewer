@@ -41,6 +41,7 @@ Le script installe Rafale pour l'utilisateur courant (`~/.local`) : entrée « R
 - [Document de conception](docs/CONCEPTION.md)
 - [Étude des évolutions de la v2](docs/ETUDE-V2.md)
 - [Étude de la v3 : juger les rafales](docs/ETUDE-V3.md)
+- [Pistes pour les versions suivantes](docs/PISTES.md)
 
 ## Licence
 
