@@ -184,6 +184,9 @@ struct App {
     burst_files: Vec<BurstFile>,
     /// Rafale bloquée (Entrée) : on ne parcourt qu'elle, et la liste montre ses vues.
     locked: Option<usize>,
+    /// Vues montrées dans la grille de la rafale bloquée (toutes, ou espacées) :
+    /// ↑ et ↓ y passent d'une rangée à l'autre.
+    locked_grid: Vec<usize>,
     /// Vue à plat : une vignette par photo au lieu d'une ligne par rafale.
     flat: bool,
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
@@ -298,6 +301,7 @@ impl App {
             burst_of: Vec::new(),
             burst_files,
             locked: None,
+            locked_grid: Vec::new(),
             flat: true,
             flat_chosen: false,
             copy_files: CopyFiles::default(),
@@ -517,7 +521,15 @@ impl App {
 
     /// ↑ / ↓ : rangée de la grille en vue à plat, rafale sinon.
     fn vertical_step(&mut self, dir: isize, now: Instant) {
-        if self.flat_view() {
+        if self.locked.is_some() {
+            // Rafale bloquée : rangée précédente ou suivante de sa grille, sans la quitter.
+            let grid = &self.locked_grid;
+            let cell = grid.partition_point(|&i| i <= self.cur).saturating_sub(1);
+            let target = cell.checked_add_signed(dir * panel::THUMBS_PER_ROW as isize);
+            if let Some(&i) = target.and_then(|t| grid.get(t)) {
+                self.jump(i, now);
+            }
+        } else if self.flat_view() {
             let per = panel::THUMBS_PER_ROW;
             if let Some(i) = (1..=per).rev().find_map(|k| self.neighbor(self.cur, dir, k)) {
                 self.jump(i, now);
@@ -898,8 +910,7 @@ impl App {
         }
     }
 
-    /// Début de la rafale précédente ou suivante (qui a des images visibles) ;
-    /// une rafale bloquée cède la place à celle-là, bloquée à son tour.
+    /// Début de la rafale précédente ou suivante (qui a des images visibles).
     fn burst_step(&mut self, dir: isize, now: Instant) {
         let Some(&b) = self.burst_of.get(self.cur) else {
             return;
@@ -908,14 +919,7 @@ impl App {
         while let Some(next) = t.checked_add_signed(dir).filter(|&n| n < self.bursts.len()) {
             t = next;
             let burst = &self.bursts[t];
-            // Bloqué, on passe d'une vraie rafale à l'autre : une vue isolée ne se bloque pas.
-            if self.locked.is_some() && burst.len < 2 {
-                continue;
-            }
             if let Some(i) = self.first_visible_in(burst.start, burst.len) {
-                if self.locked.is_some() {
-                    self.locked = Some(t);
-                }
                 return self.jump(i, now);
             }
         }
@@ -1587,18 +1591,19 @@ impl App {
         let fit = ((height as f32 - header) / row_h).max(0.0) as isize;
         let per = panel::THUMBS_PER_ROW;
 
-        // Rafale bloquée : ses vues visibles, toutes si elles tiennent, sinon
-        // régulièrement espacées. Vue à plat : les photos visibles, par rangées.
+        // Rafale bloquée : toutes ses vues visibles, par rangées. Vue à plat : les
+        // photos visibles, par rangées.
         // Sinon : les rafales qui ont au moins une image visible.
         let photos: Vec<usize> = if let Some(b) = locked {
-            let room = fit.max(1) as usize * per;
-            let shown = if members.len() > room { panel::spread(&members, room) } else { members.clone() };
-            status = if shown.len() < members.len() {
-                format!("Rafale {} bloquée · {} vues sur {} · Entrée pour débloquer", burst_number(&self.bursts, b).unwrap_or(0), shown.len(), members.len())
-            } else {
-                format!("Rafale {} bloquée · Entrée pour débloquer", burst_number(&self.bursts, b).unwrap_or(0))
-            };
-            shown
+            // Toutes ses vues visibles, une vignette chacune ; la grille défile comme
+            // la vue à plat (marquer une vue demande de la voir).
+            status = format!(
+                "Rafale {} bloquée · {} vues · Entrée pour débloquer",
+                burst_number(&self.bursts, b).unwrap_or(0),
+                members.len()
+            );
+            self.locked_grid = members.clone();
+            members.clone()
         } else if !flat {
             Vec::new()
         } else if filtering {
@@ -1631,8 +1636,8 @@ impl App {
         self.list_offset = first - anchor;
         let lines = first as usize..(first + fit).min(total as isize).max(first) as usize;
         let entries: Vec<Entry> = if grid {
-            // Vues espacées : chaque vignette tient lieu des vues jusqu'à la suivante,
-            // et prend le cadre quand on les parcourt.
+            // Rafale bloquée avec un filtre : chaque vignette tient lieu des vues masquées
+            // qui la suivent, et garde le cadre quand la photo affichée en est une.
             let end = locked.map_or(0, |b| self.bursts[b].range().end);
             lines
                 .map(|r| {
