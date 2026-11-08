@@ -66,9 +66,9 @@ la séance : PA290128-PA290142.rafale (première et dernière vue). Les autres \
 logiciels ne le lisent pas.
 • Entrée bloque la rafale de la photo affichée (bandeau bleu et cadenas) : ← → et \
 le défilé ne sortent plus de la rafale, Début et Fin vont à sa première et à sa \
-dernière vue, ↑ et ↓ passent à la rafale précédente ou suivante en restant \
-bloqué. La liste devient une grille des vues de la rafale (régulièrement espacées \
-si elle est longue). Entrée ou Échap la débloque.
+dernière vue. La liste devient une grille de toutes les vues de la rafale, \
+une vignette chacune, qui défile ; ↑ et ↓ passent d'une rangée à l'autre. Le blocage \
+tient tant que tu ne le lèves pas : Entrée ou Échap le débloque.
 • Rafale signale (⚠ dans la liste, consigne dans le panneau) une rafale retenue \
 sans photo retenue, une rafale notée X sans photo à X étoiles ou plus, et une \
 rafale rejetée qui contient des photos retenues. Retenir une photo ne retient pas \
@@ -139,9 +139,9 @@ MÉTHODE CONSEILLÉE
 1. Premier passage, toute la séance : défile touche maintenue. Sur une rafale qui \
 accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; note-la \
 (Maj+1 à 5), retiens-la (Maj+Espace) ou rejette-la (Maj+X) ; Entrée, et continue.
-2. Second passage : filtre « Rafales ✓ », bloque la première, puis ↓ de rafale en \
-rafale. Dans chacune, trouve la meilleure vue (N pour la plus nette, loupe AF, \
-grille), note-la et coche-la avec Espace.
+2. Second passage : filtre « Rafales ✓ », puis rafale par rafale : Entrée pour la \
+bloquer, trouve la meilleure vue (N pour la plus nette, loupe AF, grille), note-la \
+et coche-la avec Espace ; Entrée pour débloquer, ↓ pour la rafale suivante.
 3. Les ⚠ disent ce qu'il reste à faire ; quand il n'y en a plus, « Retoucher » \
 ou Ctrl+C part sans avertissement : seules les photos cochées partent.
 4. Ménage : bloque chaque rafale rejetée et mets-la à la corbeille.
@@ -164,7 +164,8 @@ DÉFILÉ
 
 → ou Page suivante : photo suivante ; maintenue, défilé continu
 ← ou Page précédente : photo précédente ; maintenue, défilé en arrière
-↓ / ↑ : rafale suivante / précédente (vue À plat : rangée suivante / précédente)
+↓ / ↑ : rafale suivante / précédente (vue À plat, ou rafale bloquée : rangée suivante
+/ précédente de la grille)
 Début / Fin : première / dernière photo (rafale bloquée : de la rafale)
 
 RAFALE BLOQUÉE

@@ -14,9 +14,9 @@ La v3 ajoute donc un **marquage des rafales** (note, retenue, rejet), un **mode 
 - **Entrée** bloque la rafale de la photo affichée ; Entrée à nouveau la débloque.
 - Rafale bloquée :
   - ← → ne défilent qu'à l'intérieur de la rafale et s'arrêtent à ses extrémités ; le défilé continu aussi ;
-  - **↑ ↓ passent à la rafale précédente / suivante en restant bloqué** (décidé : au second passage, on enchaîne les rafales retenues sans débloquer et rebloquer) ;
+  - ~~↑ ↓ passent à la rafale précédente / suivante en restant bloqué~~ : revu le 8 novembre 2026 (version 3.4) ; ↑ ↓ passent d'une rangée à l'autre de la grille, et le blocage reste sur la rafale examinée jusqu'à ce que l'utilisateur le lève ;
   - Début / Fin vont à la première / dernière vue de la rafale ;
-  - la liste des rafales est remplacée par une **grille de vignettes de la rafale**, régulièrement espacées (autant de rangées de 4 que le panneau en contient : 16 vues pour une rafale de 64, toutes si elle est courte), avec le marquage de chaque vue (étoiles, ✓, ✕) et le cadre bleu sur la vue affichée ; un clic va à la vue ;
+  - la liste des rafales est remplacée par une **grille de vignettes de la rafale**, avec le marquage de chaque vue (étoiles, ✓, ✕) et le cadre bleu sur la vue affichée ; un clic va à la vue. Prévue d'abord régulièrement espacée (16 vues pour une rafale de 64) ; revu le 8 novembre 2026 (version 3.4) : une vignette par vue, grille qui défile, parce qu'on ne peut pas noter, retenir ou rejeter une à une des vues qui partagent une vignette ;
   - le panneau et le titre indiquent « Rafale 12 bloquée » ;
   - le filtre s'applique toujours : seules les vues qui le passent sont parcourues et montrées.
 - **Vue À plat** : les photos y sont isolées ; le blocage et le marquage des rafales y sont désactivés.
@@ -78,7 +78,7 @@ Pour lever un signalement, on trouve la photo qui mérite la note (ou la coche),
 ## 5. Le flux visé
 
 1. **Premier passage, la séance entière** : défilé continu ; sur une rafale qui accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; la noter (Maj+1 à 5), la retenir (Maj+Espace) ou la rejeter (Maj+X) ; Entrée, et on continue.
-2. **Second passage, les rafales retenues** : bloqué, ↓ de rafale en rafale ; dans chacune, trouver la meilleure vue (N pour la plus nette, loupe AF, grille), lui donner sa note et la cocher (Espace).
+2. **Second passage, les rafales retenues** : rafale par rafale, Entrée pour bloquer, Entrée pour débloquer, ↓ pour la suivante (revu le 8 novembre 2026) ; dans chacune, trouver la meilleure vue (N pour la plus nette, loupe AF, grille), lui donner sa note et la cocher (Espace).
 3. **Les ⚠ disent ce qu'il reste à faire** ; quand il n'y en a plus, « Retoucher… » part sans avertissement.
 4. **Ménage** : bloquer chaque rafale rejetée et la mettre à la corbeille, une par une.
 

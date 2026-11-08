@@ -145,7 +145,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **Le défilé.** Un appui bref avance d'une seule photo. Si tu maintiens la touche plus de 0,3 s, le défilé continu démarre. Il ne saute jamais d'image : si le disque ou le décodage ne suivent pas, il ralentit au lieu de sauter des photos. Pendant le défilé, les photos sont affichées en aperçu réduit. Au relâchement, la pleine résolution arrive en environ un quart de seconde.
 
-**Les touches ↑ et ↓** font un saut par appui. Les maintenir ne fait pas défiler les rafales. Rafale bloquée, elles passent à la rafale précédente ou suivante, qui est bloquée à son tour.
+**Les touches ↑ et ↓** font un saut par appui. Les maintenir ne fait pas défiler les rafales. Rafale bloquée, elles passent à la rangée précédente ou suivante de sa grille, sans quitter la rafale.
 
 ## Souris
 
@@ -201,11 +201,10 @@ Au lancement, il s'applique à la rafale qui contient sa première vue, ou à d�
 **Bloquer une rafale.** Entrée bloque la rafale de la photo affichée. Un bandeau bleu à cadenas en tête de la liste, un cadenas devant « Rafale » et le titre de la fenêtre l'indiquent. Une fois la rafale bloquée :
 
 - ← →, le défilé continu, Début et Fin restent dans la rafale ;
-- ↑ ↓ passent à la rafale précédente ou suivante, bloquée à son tour ;
-- la liste devient une grille des vues de la rafale : toutes si elles tiennent, sinon autant de rangées de 4 que le panneau en contient, régulièrement espacées (« 16 vues sur 64 »). Chaque vignette porte le marquage de sa vue ; le cadre bleu suit la vue affichée, et un clic va à la vue ;
+- la liste devient une grille de toutes les vues de la rafale, une vignette par vue, par rangées de 4. Elle défile comme la vue À plat, la vue affichée gardée au premier tiers ; ↑ ↓ passent d'une rangée à l'autre, la molette ou l'ascenseur la font défiler. Chaque vignette porte le marquage de sa vue ; le cadre bleu entoure la vue affichée, et un clic va à la vue ;
 - le filtre s'applique toujours.
 
-Entrée ou Échap débloque la rafale.
+La rafale reste bloquée tant que tu ne la débloques pas : Entrée ou Échap. Rien d'autre ne fait passer à une autre rafale.
 
 **Règles de cohérence.** Rafale signale une rafale :
 
@@ -218,7 +217,7 @@ Le signalement est un ⚠ sur la ligne de la rafale, et une consigne en orange d
 **Méthode conseillée.**
 
 1. **Premier passage, toute la séance :** défilé continu. Sur une rafale qui accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; la noter (Maj+1 à 5), la retenir (Maj+Espace) ou la rejeter (Maj+X) ; Entrée, et on continue.
-2. **Second passage :** filtre « Rafales ✓ », Entrée sur la première, puis ↓ de rafale retenue en rafale retenue. Dans chacune, trouver la meilleure vue (N pour la plus nette, loupe AF, grille), lui donner sa note et la cocher (Espace).
+2. **Second passage :** filtre « Rafales ✓ », puis rafale retenue par rafale retenue : Entrée pour la bloquer, trouver la meilleure vue (N pour la plus nette, loupe AF, grille), lui donner sa note et la cocher (Espace). Puis Entrée pour débloquer, et ↓ pour la rafale retenue suivante.
 3. **Les ⚠ disent ce qu'il reste à faire.** Quand il n'y en a plus, « Retoucher » part sans avertissement.
 4. **Ménage :** bloquer chaque rafale rejetée et la mettre à la corbeille (voir plus bas).
 
@@ -278,7 +277,7 @@ Une fenêtre demande d'abord confirmation, avec le nombre de fichiers et la plac
 
 ## Rafales et réglages de l'appareil
 
-- **Rafales :** elles sont reconnues grâce au numéro de vue que les boîtiers OM System et Olympus inscrivent dans chaque fichier (1, 2, 3…). Une nouvelle rafale commence quand ce numéro repart à 1. Pour les autres appareils, Rafale se sert de l'heure de prise de vue : plus d'une seconde d'écart entre deux photos, et c'est une nouvelle rafale. Une photo prise seule est une **vue isolée** : elle a sa ligne dans la liste (« Vue isolée » et son heure), mais pas de numéro, et ne se marque ni ne se bloque comme une rafale ; ↑ et ↓ la sautent quand une rafale est bloquée. Les rafales sont numérotées 1, 2, 3… sans compter les vues isolées.
+- **Rafales :** elles sont reconnues grâce au numéro de vue que les boîtiers OM System et Olympus inscrivent dans chaque fichier (1, 2, 3…). Une nouvelle rafale commence quand ce numéro repart à 1. Pour les autres appareils, Rafale se sert de l'heure de prise de vue : plus d'une seconde d'écart entre deux photos, et c'est une nouvelle rafale. Une photo prise seule est une **vue isolée** : elle a sa ligne dans la liste (« Vue isolée » et son heure), mais pas de numéro, et ne se marque ni ne se bloque comme une rafale. Les rafales sont numérotées 1, 2, 3… sans compter les vues isolées.
 - **Rythme (images/s) :** l'heure de prise de vue n'est enregistrée qu'à la seconde près, donc le rythme n'est exact que pour une rafale qui s'étale sur au moins trois secondes distinctes, soit environ 30 images à 25 i/s. Pour les rafales plus courtes, rien n'est affiché.
 - **Mode image et filtre de bruit :** ils sont lus dans les données du boîtier (OM System / Olympus uniquement). Les noms de modes sont ceux d'exiftool, en anglais (« Natural », « i-Enhance »). Ils ne correspondent pas aux numéros du menu de l'appareil : par exemple, i-Enhance est le n° 1 du menu et Natural le n° 3.
 
