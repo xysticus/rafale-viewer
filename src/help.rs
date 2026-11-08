@@ -68,7 +68,7 @@ si elle est longue). Entrée ou Échap la débloque.
 • Rafale signale (⚠ dans la liste, consigne dans le panneau) une rafale retenue \
 sans photo retenue, une rafale notée X sans photo à X étoiles ou plus, et une \
 rafale rejetée qui contient des photos retenues. Retenir une photo ne retient pas \
-sa rafale : on fait les deux. Ctrl+C et « Retoucher… » demandent confirmation \
+sa rafale : on fait les deux. Ctrl+C et « Retoucher » demandent confirmation \
 tant qu'il reste des rafales signalées.
 
 MARQUER
@@ -111,21 +111,23 @@ alors que les photos qui passent le filtre.
 
 COPIER LA SÉLECTION
 
-• Ctrl+C, ou le bouton « Copier … », met la sélection dans le presse-papiers : \
-les photos filtrées si un filtre est actif, sinon les photos retenues. Un Ctrl+V \
-dans un dossier ouvert dans Fichiers y copie les fichiers.
-• Le choix JPEG / RAW / Les deux décide des fichiers copiés. On peut ainsi donner \
-à n'importe quel logiciel de retouche un dossier qui ne contient que les photos \
-choisies, sans dépendre de sa façon de lire notes et étiquettes.
+• Ctrl+C, ou le bouton « Copier », met la sélection dans le presse-papiers : \
+les photos filtrées si un filtre est actif, sinon les photos retenues (le nombre \
+est écrit devant le bouton). Un Ctrl+V dans un dossier ouvert dans Fichiers y \
+copie les fichiers.
+• JPEG, RAW et XMP, en bas, se cochent indépendamment (JPEG seul au départ) et \
+décident des fichiers copiés ; XMP ajoute les .xmp des photos copiées (ceux des \
+JPEG si ni JPEG ni RAW n'est coché). On peut ainsi donner à n'importe quel \
+logiciel de retouche un dossier qui ne contient que les photos choisies.
 
 RETOUCHER
 
-• « Retoucher… » copie la même sélection que Ctrl+C (JPEG, RAW ou les deux, avec \
-leurs XMP) dans un dossier voisin de la séance, propre au logiciel choisi, par \
+• « Retoucher » copie la même sélection que Ctrl+C, avec les mêmes cases JPEG, \
+RAW et XMP (cocher XMP pour garder notes et couleurs), dans un dossier voisin de la séance, propre au logiciel choisi, par \
 exemple 2026-10-29-rawtherapee (2026-10-29-retouche pour Fichiers), puis y lance \
 le logiciel. Chaque logiciel a ainsi sa copie, pour les essayer séparément. Il ne voit que les photos choisies, et ses \
 fichiers restent dans la copie : la séance triée n'est pas touchée. Le logiciel \
-est demandé au premier usage, puis retenu ; Maj+clic pour en changer. Une photo \
+se choisit avec le bouton « Logiciel » (demandé au premier usage, puis retenu). Une photo \
 déjà copiée est sautée, et un XMP déjà présent n'est jamais écrasé.
 
 MÉTHODE CONSEILLÉE
@@ -136,7 +138,7 @@ accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; note-la 
 2. Second passage : filtre « Rafales ✓ », bloque la première, puis ↓ de rafale en \
 rafale. Dans chacune, trouve la meilleure vue (N pour la plus nette, loupe AF, \
 grille), note-la et coche-la avec Espace.
-3. Les ⚠ disent ce qu'il reste à faire ; quand il n'y en a plus, « Retoucher… » \
+3. Les ⚠ disent ce qu'il reste à faire ; quand il n'y en a plus, « Retoucher » \
 ou Ctrl+C part sans avertissement : seules les photos cochées partent.
 4. Ménage : bloque chaque rafale rejetée et mets-la à la corbeille.
 
@@ -203,6 +205,8 @@ Ctrl+Q : quitter
 
 SOURIS
 
+Rangée tout en haut du panneau : L, A, C, N, G, cliquables comme leurs touches
+(fond bleu : actif ; grisé : sans effet sur cette photo)
 Pointeur sur la photo, à l'arrêt, loupe activée (L) : loupe 100 %
 Clic sur la photo, loupe activée : la fige à cet endroit (un autre clic la déplace)
 Clic droit : libère la loupe figée (libérée aussi en changeant de rafale)
@@ -213,9 +217,9 @@ Mêmes commandes en bas : filtre des photos, puis rangée « Rafales » : filtre
 rafales ; « effacer » supprime les deux
 Clic sur une rafale ou une vignette : y aller
 Molette sur le panneau, ou ascenseur : faire défiler la liste
-JPEG / RAW / Les deux, puis « Copier … » : comme Ctrl+C
-« Retoucher… » : copie la sélection à côté de la séance et lance le logiciel de retouche
-Maj+clic sur « Retoucher… » : choisir un autre logiciel
+JPEG / RAW / XMP : fichiers copiés, cochés indépendamment ; « Copier » : comme Ctrl+C
+« Logiciel : … » : choisir le logiciel de retouche
+« Retoucher » : copie la sélection à côté de la séance et lance le logiciel de retouche
 Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
 Corbeille : N rejetées : met les photos rejetées à la corbeille (après confirmation)
 Corbeille : rafale N : rafale bloquée et rejetée, toute la rafale à la corbeille
