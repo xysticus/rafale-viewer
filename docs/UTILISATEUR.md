@@ -87,6 +87,8 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 
 Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois parties.
 
+**Tout en haut, les outils** : **L** loupe, **A** loupe AF, **C** cadre AF, **N** vue la plus nette, **G** ligne du Live GND. Un clic fait la même chose que la touche. Fond bleu : actif ; contour : coupé ; grisé : sans effet sur cette photo (pas de zone AF, pas de rafale à mesurer, pas de Live GND). N est une action, sans état.
+
 **En haut, la photo affichée :**
 - les commandes de marquage de la photo (étoiles, couleur, retenue, rejet), l'état de la photo en toutes lettres et, s'il a servi, le Live GND (voir « Live GND ») ; dessous, celles de sa rafale (rangée « Rafale » : étoiles, retenue, rejet) ;
 - le nom du fichier et, à droite, la position dans le dossier ;
@@ -167,8 +169,8 @@ Le marquage est enregistré dans un petit fichier à côté de chaque photo marq
 
 - **Les étoiles (1 à 5) notent la qualité**, et rien ne les change à ta place : tu peux toujours revoir plus tard toutes tes bonnes photos avec le filtre étoiles.
 - **La retenue (✓, touche Espace ou case ✓) veut dire « je la retouche ».** Dans une rafale où dix photos sont également bonnes, les dix gardent leurs 3 étoiles et une seule reçoit ✓.
-- Le filtre ✓, la copie sans filtre (Ctrl+C), « Retoucher… » et le compte « ✓ n » des rafales ne prennent que les photos cochées. Espace coche ou décoche sans toucher aux étoiles ; rejeter (X) enlève la coche.
-- Les autres logiciels n'ont pas besoin de connaître la coche : « Retoucher… » ne leur donne que les photos cochées, avec leurs étoiles. digiKam l'affiche comme « acceptée ».
+- Le filtre ✓, la copie sans filtre (Ctrl+C), « Retoucher » et le compte « ✓ n » des rafales ne prennent que les photos cochées. Espace coche ou décoche sans toucher aux étoiles ; rejeter (X) enlève la coche.
+- Les autres logiciels n'ont pas besoin de connaître la coche : « Retoucher » ne leur donne que les photos cochées, avec leurs étoiles. digiKam l'affiche comme « acceptée ».
 - **Séances triées avant cette version :** leurs photos n'ont aucune coche (les étoiles sont conservées).
 
 ## Juger les rafales
@@ -206,13 +208,13 @@ Entrée ou Échap débloque la rafale.
 2. notée X sans aucune photo notée X ou plus (photos rejetées exclues) ;
 3. rejetée qui contient des photos retenues.
 
-Le signalement est un ⚠ sur la ligne de la rafale, et une consigne en orange dans le panneau : « Rafale notée 4 : aucune photo à 4 étoiles ou plus. Trouve-la, ou baisse la note de la rafale. » Retenir une photo ne retient pas sa rafale : Espace et Maj+Espace sont indépendants, et c'est la règle 1 qui rappelle de faire les deux. Tant qu'il reste des rafales signalées, Ctrl+C et « Retoucher… » demandent confirmation, avec la liste (« 2 rafales retenues sans photo retenue : 12, 37 ») ; sinon la copie part directement.
+Le signalement est un ⚠ sur la ligne de la rafale, et une consigne en orange dans le panneau : « Rafale notée 4 : aucune photo à 4 étoiles ou plus. Trouve-la, ou baisse la note de la rafale. » Retenir une photo ne retient pas sa rafale : Espace et Maj+Espace sont indépendants, et c'est la règle 1 qui rappelle de faire les deux. Tant qu'il reste des rafales signalées, Ctrl+C et « Retoucher » demandent confirmation, avec la liste (« 2 rafales retenues sans photo retenue : 12, 37 ») ; sinon la copie part directement.
 
 **Méthode conseillée.**
 
 1. **Premier passage, toute la séance :** défilé continu. Sur une rafale qui accroche, Entrée pour la bloquer, la parcourir et regarder la grille ; la noter (Maj+1 à 5), la retenir (Maj+Espace) ou la rejeter (Maj+X) ; Entrée, et on continue.
 2. **Second passage :** filtre « Rafales ✓ », Entrée sur la première, puis ↓ de rafale retenue en rafale retenue. Dans chacune, trouver la meilleure vue (N pour la plus nette, loupe AF, grille), lui donner sa note et la cocher (Espace).
-3. **Les ⚠ disent ce qu'il reste à faire.** Quand il n'y en a plus, « Retoucher… » part sans avertissement.
+3. **Les ⚠ disent ce qu'il reste à faire.** Quand il n'y en a plus, « Retoucher » part sans avertissement.
 4. **Ménage :** bloquer chaque rafale rejetée et la mettre à la corbeille (voir plus bas).
 
 ### Les RAW
@@ -239,24 +241,22 @@ Un XMP **vierge** d'un autre logiciel, comme ceux que darktable crée pour chaqu
 
 Pour donner à un logiciel de retouche un dossier qui ne contient que les photos choisies, sans dépendre de sa façon de lire notes et étiquettes :
 
-1. Choisis en bas **JPEG** (par défaut), **RAW** ou **Les deux**.
-2. **Ctrl+C**, ou clic sur **« Copier … »**. La sélection, ce sont les photos qui passent le filtre si un filtre (des photos ou des rafales) est actif, sinon les photos retenues. Le bouton indique combien il y en a. S'il reste des rafales signalées, une confirmation les récapitule d'abord.
+1. Coche en bas les fichiers voulus : **JPEG** (coché au départ), **RAW**, **XMP**, indépendamment. XMP ajoute les `.xmp` des photos copiées, ou ceux des JPEG si ni JPEG ni RAW n'est coché : de quoi donner les marquages à un logiciel essayé sur une copie des photos.
+2. **Ctrl+C**, ou clic sur **« Copier »**. La sélection, ce sont les photos qui passent le filtre si un filtre (des photos ou des rafales) est actif, sinon les photos retenues ; leur nombre est écrit devant le bouton (« 12 retenues »). S'il reste des rafales signalées, une confirmation les récapitule d'abord.
 3. Dans **Fichiers**, ouvre le dossier de destination et fais **Ctrl+V** : les fichiers y sont copiés.
 
-Le compte rendu s'affiche à côté du bouton, par exemple « 24 fichiers copiés, 2 sans RAW ».
-
-**Ctrl+X : les XMP seuls** (fonction cachée, sans bouton). Même sélection et même choix JPEG / RAW / Les deux que Ctrl+C, mais seuls les fichiers `.xmp` existants sont mis dans le presse-papiers, en copie (rien n'est déplacé). Usage : essayer un logiciel qui écrit ses propres `.xmp` sans salir le dossier trié dans Rafale. On copie les photos (Ctrl+C) dans un dossier d'essai, puis leurs `.xmp` (Ctrl+X), et le logiciel essayé y retrouve les marquages. Les `.xmp` ne sont pas copiés. Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
+Le compte rendu s'affiche à droite des cases, par exemple « 24 fichiers copiés, 2 sans RAW ». Le presse-papiers reste rempli même après la fermeture de Rafale, jusqu'à la prochaine copie. Il faut le paquet `wl-clipboard` (installé d'office sur Fedora).
 
 ## Retoucher la sélection
 
-Le bouton **« Retoucher… »**, à côté de « Copier », prépare la retouche en une seule action :
+Le bouton **« Retoucher »** prépare la retouche en une seule action :
 
-1. il copie la même sélection que Ctrl+C (les photos filtrées si un filtre est actif, sinon les retenues), en JPEG, RAW ou les deux selon le choix en bas, **avec leurs `.xmp`** (notes et couleurs), dans un dossier **voisin** de la séance, **propre au logiciel** : `~/Images/2026-10-29-rawtherapee/`, `2026-10-29-darktable/`… (`2026-10-29-retouche/` pour Fichiers). Chaque logiciel a ainsi sa propre copie, pour les essayer séparément sans qu'ils se mélangent ;
+1. il copie la même sélection que Ctrl+C (les photos filtrées si un filtre est actif, sinon les retenues), avec les mêmes cases : JPEG et RAW pour les photos (au moins l'une des deux), **XMP pour leurs notes et couleurs**, dans un dossier **voisin** de la séance, **propre au logiciel** : `~/Images/2026-10-29-rawtherapee/`, `2026-10-29-darktable/`… (`2026-10-29-retouche/` pour Fichiers). Chaque logiciel a ainsi sa propre copie, pour les essayer séparément sans qu'ils se mélangent ;
 2. il lance le logiciel de retouche sur ce dossier.
 
 Le logiciel ne voit que les photos choisies, et il écrit ses propres fichiers (`.pp3`, `.xmp` de darktable…) dans la copie : la séance triée et les originaux ne sont jamais touchés.
 
-- **Choix du logiciel :** au premier usage, une liste des logiciels installés (RawTherapee, darktable, Showfoto, XnView MP, gThumb, ou simplement Fichiers). Le choix est retenu (`~/.config/rafale/retouche`) ; **Maj+clic** sur le bouton pour en changer.
+- **Choix du logiciel :** au premier usage, une liste des logiciels installés (RawTherapee, darktable, Showfoto, XnView MP, gThumb, ou simplement Fichiers). Le choix est retenu (`~/.config/rafale/retouche`), et le bouton **« Logiciel : … »**, entre « Copier » et « Retoucher », permet d'en changer sans lancer de retouche.
 - **Plusieurs passages :** une photo déjà copiée est sautée, et un `.xmp` déjà présent dans le dossier de retouche n'est jamais écrasé, car le logiciel a pu y écrire ses réglages.
 - darktable importe le dossier dans sa bibliothèque ; gThumb enregistre ses retouches par-dessus le fichier, ici la copie.
 

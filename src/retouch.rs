@@ -10,10 +10,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Logiciels proposés, s'ils sont installés : (identifiant du .desktop, nom,
-/// suffixe du dossier de copie). Tous acceptent un dossier en argument.
+/// suffixe du dossier de copie). Tous acceptent un dossier en argument. Un même
+/// logiciel peut avoir deux identifiants (paquet Fedora, Flatpak) : le premier
+/// installé est proposé.
 const EDITORS: &[(&str, &str, &str)] = &[
     ("com.rawtherapee.RawTherapee", "RawTherapee", "rawtherapee"),
     ("org.darktable.darktable", "darktable (importe le dossier dans sa bibliothèque)", "darktable"),
+    ("org.darktable.Darktable", "darktable (importe le dossier dans sa bibliothèque)", "darktable"),
     ("us.pixls.art.ART", "ART", "art"),
     ("org.kde.digikam-showfoto", "Showfoto (éditeur de digiKam)", "showfoto"),
     ("com.xnview.XnViewMP", "XnView MP", "xnview"),
@@ -31,9 +34,15 @@ pub fn installed_editors() -> Vec<(&'static str, &'static str)> {
     if let Some(home) = std::env::var_os("HOME") {
         dirs.push(PathBuf::from(home).join(".local/share"));
     }
+    let mut seen = Vec::new();
     EDITORS
         .iter()
         .filter(|(id, _, _)| dirs.iter().any(|d| d.join("applications").join(format!("{id}.desktop")).is_file()))
+        .filter(|(_, _, suffix)| {
+            let first = !seen.contains(suffix);
+            seen.push(*suffix);
+            first
+        })
         .map(|&(id, name, _)| (id, name))
         .collect()
 }
@@ -64,11 +73,14 @@ pub fn save_editor(id: &str) {
 }
 
 /// Fenêtre de choix du logiciel (zenity) ; la réponse, l'identifiant, sort sur stdout.
-pub fn chooser() -> Command {
+/// Liste des logiciels installés ; `then_retouch` : le bouton lance la retouche,
+/// sinon il retient seulement le choix.
+pub fn chooser(then_retouch: bool) -> Command {
     let mut cmd = Command::new("zenity");
+    let ok = if then_retouch { "Retoucher" } else { "Choisir" };
     cmd.args(["--list", "--title", "Rafale — retoucher avec", "--text", "Logiciel lancé sur la copie des photos choisies :"])
         .args(["--column", "Logiciel", "--column", "id", "--hide-column", "2", "--print-column", "2"])
-        .args(["--width", "520", "--height", "360", "--ok-label", "Retoucher", "--cancel-label", "Annuler"]);
+        .args(["--width", "520", "--height", "360", "--ok-label", ok, "--cancel-label", "Annuler"]);
     for (id, name) in installed_editors() {
         cmd.args([name, id]);
     }
@@ -93,10 +105,10 @@ pub struct Copied {
     pub sidecars: usize,
 }
 
-/// Copie les photos et leur XMP (`PHOTO.EXT.xmp`) dans `dest`, à plat. Une photo
-/// déjà présente avec la même taille est sautée ; un XMP déjà présent n'est jamais
-/// écrasé (le logiciel de retouche a pu y écrire ses réglages).
-pub fn copy(photos: &[PathBuf], dest: &Path) -> std::io::Result<Copied> {
+/// Copie les photos, et leur XMP (`PHOTO.EXT.xmp`) si `xmp`, dans `dest`, à plat.
+/// Une photo déjà présente avec la même taille est sautée ; un XMP déjà présent
+/// n'est jamais écrasé (le logiciel de retouche a pu y écrire ses réglages).
+pub fn copy(photos: &[PathBuf], dest: &Path, xmp: bool) -> std::io::Result<Copied> {
     std::fs::create_dir_all(dest)?;
     let mut done = Copied::default();
     for photo in photos {
@@ -109,10 +121,10 @@ pub fn copy(photos: &[PathBuf], dest: &Path) -> std::io::Result<Copied> {
             copy_file(photo, &target)?;
             done.photos += 1;
         }
-        let xmp = crate::marks::sidecar(photo);
-        let xmp_target = crate::marks::sidecar(&target);
-        if xmp.is_file() && !xmp_target.exists() {
-            copy_file(&xmp, &xmp_target)?;
+        let sidecar = crate::marks::sidecar(photo);
+        let sidecar_target = crate::marks::sidecar(&target);
+        if xmp && sidecar.is_file() && !sidecar_target.exists() {
+            copy_file(&sidecar, &sidecar_target)?;
             done.sidecars += 1;
         }
     }
@@ -157,12 +169,16 @@ mod tests {
         let dest = destination(&session, "com.rawtherapee.RawTherapee");
         assert_eq!(dest, base.join("2026-10-29-rawtherapee"));
         let photos = [jpeg, raw];
-        assert_eq!(copy(&photos, &dest).unwrap(), Copied { photos: 2, already: 0, sidecars: 1 });
+        // Sans XMP coché : les photos seules.
+        let sans = base.join("sans-xmp");
+        assert_eq!(copy(&photos, &sans, false).unwrap(), Copied { photos: 2, already: 0, sidecars: 0 });
+        assert!(!sans.join("P1.ORF.xmp").exists());
+        assert_eq!(copy(&photos, &dest, true).unwrap(), Copied { photos: 2, already: 0, sidecars: 1 });
         assert!(dest.join("P1.JPG").is_file() && dest.join("P1.ORF").is_file());
 
         // Le logiciel de retouche réécrit le XMP : une nouvelle copie n'y touche pas.
         std::fs::write(dest.join("P1.ORF.xmp"), b"reglages darktable").unwrap();
-        assert_eq!(copy(&photos, &dest).unwrap(), Copied { photos: 0, already: 2, sidecars: 0 });
+        assert_eq!(copy(&photos, &dest, true).unwrap(), Copied { photos: 0, already: 2, sidecars: 0 });
         assert_eq!(std::fs::read(dest.join("P1.ORF.xmp")).unwrap(), b"reglages darktable");
     }
 }

@@ -42,7 +42,7 @@ const FILTER_BAR: f32 = CTRL + 16.0;
 const BURST_FILTER_BAR: f32 = CTRL + 8.0;
 const BUTTON_H: f32 = 24.0;
 const BUTTON_LINE: f32 = BUTTON_H + 8.0;
-pub const BOTTOM_BAR: f32 = FILTER_BAR + BURST_FILTER_BAR + 2.0 * BUTTON_LINE + 6.0;
+pub const BOTTOM_BAR: f32 = FILTER_BAR + BURST_FILTER_BAR + 3.0 * BUTTON_LINE + 6.0;
 
 /// Élément cliquable du panneau.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -55,6 +55,8 @@ pub enum Widget {
     BurstStar(u8),
     BurstCheck,
     BurstReject,
+    /// Outil de la rangée du haut (L, A, C, N, G), comme sa touche.
+    Tool(char),
     /// Filtre des rafales (rangée « Rafales » de la barre de filtre).
     FilterBurstStar(u8),
     FilterBurstCheck,
@@ -67,22 +69,32 @@ pub enum Widget {
     /// Fenêtres d'aide.
     Principles,
     Shortcuts,
-    /// Fichiers à copier, et copie de la sélection dans le presse-papiers.
-    CopyKind(CopyKind),
+    /// Fichiers à copier (0 JPEG, 1 RAW, 2 XMP), cochés indépendamment, et copie
+    /// de la sélection dans le presse-papiers.
+    CopyFile(u8),
     Copy,
+    /// Choix du logiciel de retouche, sans lancer la retouche.
+    Editor,
     /// Mettre les photos rejetées à la corbeille.
     Trash,
     /// Copier la sélection et l'ouvrir dans le logiciel de retouche.
     Retouch,
 }
 
-/// Fichiers copiés pour chaque photo de la sélection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CopyKind {
-    #[default]
-    Jpeg,
-    Raw,
-    Both,
+/// Fichiers copiés pour chaque photo de la sélection, par Ctrl+C comme par
+/// « Retoucher » ; JPEG seul au départ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopyFiles {
+    pub jpeg: bool,
+    pub raw: bool,
+    /// Les `.xmp` des photos copiées (ceux des JPEG si ni JPEG ni RAW n'est coché).
+    pub xmp: bool,
+}
+
+impl Default for CopyFiles {
+    fn default() -> Self {
+        CopyFiles { jpeg: true, raw: false, xmp: false }
+    }
 }
 
 /// État affiché par une rangée de commandes.
@@ -123,8 +135,20 @@ pub struct Line {
     pub right_color: [u8; 3],
 }
 
-/// Haut du panneau : rangées de commandes et ce qu'on lit à leur droite.
+/// Outil de la rangée du haut : sa touche, son nom, son état.
+#[derive(Debug, Clone, Copy)]
+pub struct Tool {
+    pub key: char,
+    pub label: &'static str,
+    /// Actif ou non ; None pour une action (N).
+    pub on: Option<bool>,
+    /// Sans effet sur cette photo (pas de zone AF, de GND, de rafale) : grisé.
+    pub enabled: bool,
+}
+
+/// Haut du panneau : outils, rangées de commandes et ce qu'on lit à leur droite.
 pub struct Info<'a> {
+    pub tools: &'a [Tool],
     pub controls: &'a Controls,
     /// Rangée de la rafale, si son marquage est possible.
     pub burst: Option<&'a Controls>,
@@ -187,10 +211,12 @@ pub struct View {
     pub locked: bool,
     pub flat_available: bool,
     pub flat: bool,
-    pub copy_kind: CopyKind,
-    /// Libellé du bouton de copie, et compte rendu de la dernière copie.
-    pub copy_label: String,
+    pub copy_files: CopyFiles,
+    /// « 12 retenues », « 40 filtrées » ; compte rendu de la dernière copie.
+    pub count_label: String,
     pub copy_message: String,
+    /// Bouton du logiciel de retouche : son nom, ou une invitation à le choisir.
+    pub editor_label: String,
     /// Libellé du bouton de corbeille, s'il y a des photos rejetées.
     pub trash_label: Option<String>,
 }
@@ -456,6 +482,30 @@ impl Canvas {
         w
     }
 
+    /// Outil de la rangée du haut : sa lettre, puis son nom ; fond clair quand il
+    /// est actif, contour sinon ; grisé quand il est sans effet. Renvoie sa largeur.
+    fn tool(&mut self, font: &Font, x: f32, y: f32, t: &Tool) -> f32 {
+        let key = t.key.to_string();
+        let (kw, lw) = (text_width(font, &key, 15.0), text_width(font, t.label, 14.0));
+        let w = (kw + lw + 22.0).round();
+        let on = t.on == Some(true);
+        if on {
+            self.rect(x, y, w, BUTTON_H, [90, 160, 255], 0.35);
+        } else {
+            for (rx, ry, rw, rh) in [(x, y, w, 1.0), (x, y + BUTTON_H - 1.0, w, 1.0), (x, y, 1.0, BUTTON_H), (x + w - 1.0, y, 1.0, BUTTON_H)] {
+                self.rect(rx, ry, rw, rh, [255, 255, 255], if t.enabled { 0.22 } else { 0.1 });
+            }
+        }
+        let (kc, lc) = match (on, t.enabled) {
+            (true, _) => ([255, 255, 255], [225, 235, 250]),
+            (false, true) => ([235, 235, 235], [150, 150, 150]),
+            (false, false) => ([95, 95, 95], [80, 80, 80]),
+        };
+        self.text(font, x + 8.0, y + 17.0, x + w, &key, 15.0, kc);
+        self.text(font, x + 14.0 + kw, y + 17.0, x + w, t.label, 14.0, lc);
+        w
+    }
+
     /// Bouton texte ; renvoie sa largeur.
     fn button(&mut self, font: &Font, x: f32, y: f32, label: &str, on: bool) -> f32 {
         let w = button_width(font, label);
@@ -604,8 +654,9 @@ impl Panel {
         let Some(font) = &self.font else {
             return (vec![0; 4], 1, 1, Vec::new());
         };
-        let burst_y = INFO_TOP + CTRL + BURST_ROW_GAP;
-        let mut y = if info.burst.is_some() { burst_y + CTRL } else { INFO_TOP + CTRL } + 6.0;
+        let top = INFO_TOP + BUTTON_H + 10.0;
+        let burst_y = top + CTRL + BURST_ROW_GAP;
+        let mut y = if info.burst.is_some() { burst_y + CTRL } else { top + CTRL } + 6.0;
         let mut baselines = Vec::with_capacity(lines.len());
         for line in lines {
             let m = font.horizontal_line_metrics(line.size).unwrap();
@@ -616,19 +667,27 @@ impl Panel {
         // Double trait en bas : sépare les informations de la liste des rafales.
         let height = (y + 16.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
-        let mut hits = canvas.controls(PADDING, INFO_TOP, info.controls);
+        // Tout en haut : les outils, cliquables comme leurs touches.
+        let mut hits = Vec::new();
+        let mut x = PADDING;
+        for t in info.tools {
+            let w = canvas.tool(font, x, INFO_TOP, t);
+            hits.push(Hit { widget: Widget::Tool(t.key.to_ascii_lowercase()), x, y: INFO_TOP, w, h: BUTTON_H });
+            x += w + 6.0;
+        }
+        hits.extend(canvas.controls(PADDING, top, info.controls));
         let locked = info.locked;
         // À droite des commandes : l'état de la photo, puis le Live GND calé à droite.
         let mut mark_end = width as f32 - PADDING / 2.0;
         if let Some((label, dark)) = info.gnd {
             let x = width as f32 - PADDING - text_width(font, label, 16.0);
-            canvas.text(font, x, INFO_TOP + 17.0, width as f32, label, 16.0, [235, 235, 235]);
+            canvas.text(font, x, top + 17.0, width as f32, label, 16.0, [235, 235, 235]);
             let disc = x - GND_DISC - 6.0;
-            canvas.gnd_disc(disc, INFO_TOP + 1.0, GND_DISC, dark);
+            canvas.gnd_disc(disc, top + 1.0, GND_DISC, dark);
             mark_end = disc - 8.0;
         }
         let mark_x = hits.last().map_or(PADDING, |h| h.x + h.w) + 14.0;
-        canvas.text(font, mark_x, INFO_TOP + 17.0, mark_end, info.mark.0, 16.0, info.mark.1);
+        canvas.text(font, mark_x, top + 17.0, mark_end, info.mark.0, 16.0, info.mark.1);
         if let Some(c) = info.burst {
             // « Rafale » (cadenas bleu devant, si elle est bloquée) puis ses
             // étoiles ; ✓ et ✕ sous ceux de la photo.
@@ -734,21 +793,32 @@ impl Panel {
             canvas.check_box(check_x, y, c.check, Widget::FilterBurstCheck, &mut bar_hits);
         }
 
-        // Ligne de copie : JPEG / RAW / les deux, bouton de copie, compte rendu.
+        // Fichiers copiés : JPEG, RAW, XMP, cochés indépendamment ; compte rendu à droite.
         let by = bar + FILTER_BAR + BURST_FILTER_BAR + 4.0;
         let mut x = PADDING;
-        for (label, kind) in [("JPEG", CopyKind::Jpeg), ("RAW", CopyKind::Raw), ("Les deux", CopyKind::Both)] {
-            let w = canvas.button(&font, x, by, label, view.copy_kind == kind);
-            bar_hits.push(Hit { widget: Widget::CopyKind(kind), x, y: by, w, h: BUTTON_H });
+        let f = view.copy_files;
+        for (k, (label, on)) in [("JPEG", f.jpeg), ("RAW", f.raw), ("XMP", f.xmp)].into_iter().enumerate() {
+            let w = canvas.button(&font, x, by, label, on);
+            bar_hits.push(Hit { widget: Widget::CopyFile(k as u8), x, y: by, w, h: BUTTON_H });
             x += w;
         }
-        x += 12.0;
-        let w = canvas.button(&font, x, by, &view.copy_label, false);
-        bar_hits.push(Hit { widget: Widget::Copy, x, y: by, w, h: BUTTON_H });
-        let x = x + w + 6.0;
-        let w = canvas.button(&font, x, by, "Retoucher…", false);
-        bar_hits.push(Hit { widget: Widget::Retouch, x, y: by, w, h: BUTTON_H });
-        canvas.text(&font, x + w + 12.0, by + 17.0, max_x, &view.copy_message, 15.0, [150, 150, 150]);
+        canvas.text(&font, x + 12.0, by + 17.0, max_x, &view.copy_message, 15.0, [150, 150, 150]);
+
+        // Sélection, copie, logiciel de retouche, retouche.
+        let by = by + BUTTON_LINE;
+        canvas.text(&font, PADDING, by + 17.0, max_x, &view.count_label, 15.0, [215, 215, 215]);
+        let mut x = PADDING + text_width(&font, &view.count_label, 15.0) + 12.0;
+        for (label, widget) in [("Copier", Widget::Copy), (view.editor_label.as_str(), Widget::Editor), ("Retoucher", Widget::Retouch)] {
+            if widget == Widget::Editor {
+                // Trait vertical : la copie d'un côté, la retouche de l'autre.
+                x += 8.0;
+                canvas.rect(x, by + 3.0, 1.0, BUTTON_H - 6.0, [255, 255, 255], 0.3);
+                x += 15.0;
+            }
+            let w = canvas.button(&font, x, by, label, false);
+            bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
+            x += w + 6.0;
+        }
 
         // Ligne de boutons : vue à gauche, aide à droite.
         let by = by + BUTTON_LINE;

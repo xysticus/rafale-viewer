@@ -27,7 +27,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 use loader::{Decoded, Job, Loader, Quality};
 use marks::{BurstFile, BurstFilter, BurstMark, Color, Filter, Issue, Mark};
 use meta::Meta;
-use panel::{Cell, Controls, CopyKind, Entry, Hit, Info, Line, Panel, Row, Track, View, Widget};
+use panel::{Cell, Controls, CopyFiles, Entry, Hit, Info, Line, Panel, Row, Tool, Track, View, Widget};
 use render::{LoupeKind, Rect, Renderer};
 
 /// Délai avant le défilé continu quand on maintient la touche (un appui bref = une image).
@@ -46,8 +46,8 @@ const FLAT_BURST_MAX: usize = 5;
 enum Pending {
     /// Fichiers à mettre à la corbeille si la confirmation est acceptée.
     Trash(Vec<PathBuf>),
-    /// Choix du logiciel de retouche.
-    Editor,
+    /// Choix du logiciel de retouche, puis retouche (`true`) ou choix seul.
+    Editor(bool),
     /// Copie (Ctrl+C) ou retouche (avec ou sans choix du logiciel) confirmée
     /// malgré des rafales signalées.
     Copy,
@@ -160,7 +160,9 @@ struct App {
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
     flat_chosen: bool,
     /// Fichiers copiés par Ctrl+C, et compte rendu de la dernière copie.
-    copy_kind: CopyKind,
+    copy_files: CopyFiles,
+    /// Logiciel de retouche retenu (identifiant de son .desktop).
+    editor: Option<String>,
     copy_message: String,
     modifiers: Modifiers,
     /// Fenêtre d'aide ouverte (zenity) : la fenêtre principale ignore alors les entrées.
@@ -265,7 +267,8 @@ impl App {
             locked: None,
             flat: true,
             flat_chosen: false,
-            copy_kind: CopyKind::default(),
+            copy_files: CopyFiles::default(),
+            editor: retouch::saved_editor(),
             copy_message: String::new(),
             modifiers: Modifiers::default(),
             help: None,
@@ -378,41 +381,11 @@ impl App {
             let shift = self.modifiers.state().shift_key();
             match c.to_lowercase().as_str() {
                 "c" if pressed && ctrl => return self.copy_selection(),
-                // Fonction cachée : seulement les XMP de la sélection, pour donner
-                // les marquages à un logiciel qu'on essaie sur une copie des photos.
-                "x" if pressed && ctrl => return self.copy_xmp(),
                 "q" if pressed && ctrl => return event_loop.exit(),
                 "o" if pressed && ctrl => return self.ask_folder(),
                 _ if ctrl => return,
                 "f" if pressed => return self.toggle_fullscreen(),
-                "n" if pressed => return self.jump_sharpest(),
-                "c" if pressed => {
-                    self.af_frame = !self.af_frame;
-                    return;
-                }
-                "a" if pressed => {
-                    self.af_loupe = !self.af_loupe;
-                    self.loupe_on |= self.af_loupe;
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
-                    return;
-                }
-                "l" if pressed => {
-                    self.loupe_on = !self.loupe_on;
-                    if !self.loupe_on {
-                        self.af_loupe = false;
-                        self.pin = None;
-                    }
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
-                    return;
-                }
-                "g" if pressed => {
-                    self.gnd_line = !self.gnd_line;
-                    return;
-                }
+                k @ ("l" | "a" | "c" | "n" | "g") if pressed => return self.tool(k.chars().next().unwrap()),
                 // Rejet : X comme Lightroom, R comme darktable ; avec Maj, la rafale.
                 "x" | "r" if pressed && shift => return self.edit_burst_mark(BurstMark::toggle_rejected),
                 "x" | "r" if pressed => {
@@ -544,21 +517,33 @@ impl App {
     /// dans Fichiers : un Ctrl+V dans un dossier les y copie.
     fn copy_selection_now(&mut self) {
         let selection = self.selection();
+        let f = self.copy_files;
         let mut paths = Vec::new();
         let mut no_raw = 0;
         for &i in &selection {
-            if self.copy_kind != CopyKind::Raw {
-                paths.push(self.files[i].clone());
+            let jpeg = &self.files[i];
+            if f.jpeg {
+                paths.push(jpeg.clone());
             }
-            if self.copy_kind != CopyKind::Jpeg {
+            if f.raw {
                 match &self.raws[i] {
                     Some(raw) => paths.push(raw.clone()),
                     None => no_raw += 1,
                 }
             }
+            if f.xmp {
+                // Les XMP des photos copiées ; ceux des JPEG si aucune photo n'est cochée.
+                if f.jpeg || !f.raw {
+                    paths.push(marks::sidecar(jpeg));
+                }
+                if f.raw {
+                    paths.extend(self.raws[i].as_deref().map(marks::sidecar));
+                }
+            }
         }
+        paths.retain(|p| p.is_file());
         self.copy_message = if paths.is_empty() {
-            if selection.is_empty() { "sélection vide".into() } else { "aucun RAW".into() }
+            if selection.is_empty() { "sélection vide".into() } else { "rien à copier".into() }
         } else {
             match clipboard_files(&paths) {
                 Ok(()) => {
@@ -572,33 +557,6 @@ impl App {
             }
         };
         log::info!("copie de la sélection : {}", self.copy_message);
-    }
-
-    /// Ctrl+X : met dans le presse-papiers les XMP de la sélection (ceux des JPEG,
-    /// des RAW ou les deux, selon le choix de copie), comme une copie dans Fichiers.
-    fn copy_xmp(&mut self) {
-        let mut paths = Vec::new();
-        for i in self.selection() {
-            if self.copy_kind != CopyKind::Raw {
-                paths.push(marks::sidecar(&self.files[i]));
-            }
-            if self.copy_kind != CopyKind::Jpeg {
-                paths.extend(self.raws[i].as_deref().map(marks::sidecar));
-            }
-        }
-        paths.retain(|p| p.is_file());
-        self.copy_message = if paths.is_empty() {
-            "aucun XMP à copier".into()
-        } else {
-            match clipboard_files(&paths) {
-                Ok(()) => format!("{} XMP copiés : Ctrl+V dans Fichiers", paths.len()),
-                Err(e) => {
-                    log::error!("presse-papiers : {e}");
-                    format!("échec : {e}")
-                }
-            }
-        };
-        log::info!("copie des XMP : {}", self.copy_message);
     }
 
     /// Ouvre une fenêtre d'aide à texte sélectionnable (zenity).
@@ -655,28 +613,40 @@ impl App {
     }
 
     fn retouch_now(&mut self, choose: bool) {
-        match retouch::saved_editor().filter(|_| !choose) {
+        match self.editor.clone().filter(|_| !choose) {
             Some(editor) => self.retouch_with(&editor),
-            None if retouch::installed_editors().is_empty() => {
-                self.copy_message = "aucun logiciel de retouche trouvé".into();
+            None => self.choose_editor(true),
+        }
+    }
+
+    /// Fenêtre de choix du logiciel de retouche ; `then_retouch` : la retouche
+    /// suit le choix, sinon il est seulement retenu.
+    fn choose_editor(&mut self, then_retouch: bool) {
+        if retouch::installed_editors().is_empty() {
+            self.copy_message = "aucun logiciel de retouche trouvé".into();
+            return;
+        }
+        match retouch::chooser(then_retouch).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+            Ok(c) => {
+                self.help = Some(c);
+                self.modal = Some(Pending::Editor(then_retouch));
             }
-            None => match retouch::chooser().stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
-                Ok(c) => {
-                    self.help = Some(c);
-                    self.modal = Some(Pending::Editor);
-                }
-                Err(e) => log::warn!("zenity : {e}"),
-            },
+            Err(e) => log::warn!("zenity : {e}"),
         }
     }
 
     fn retouch_with(&mut self, editor: &str) {
+        let f = self.copy_files;
+        if !f.jpeg && !f.raw {
+            self.copy_message = "coche JPEG ou RAW pour retoucher".into();
+            return;
+        }
         let mut photos = Vec::new();
         for i in self.selection() {
-            if self.copy_kind != CopyKind::Raw {
+            if f.jpeg {
                 photos.push(self.files[i].clone());
             }
-            if self.copy_kind != CopyKind::Jpeg {
+            if f.raw {
                 photos.extend(self.raws[i].clone());
             }
         }
@@ -686,7 +656,7 @@ impl App {
         }
         let dest = retouch::destination(&self.dir, editor);
         let folder = dest.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        self.copy_message = match retouch::copy(&photos, &dest).and_then(|c| retouch::launch(editor, &dest).map(|()| c)) {
+        self.copy_message = match retouch::copy(&photos, &dest, f.xmp).and_then(|c| retouch::launch(editor, &dest).map(|()| c)) {
             Ok(c) => {
                 let already = if c.already > 0 { format!(" ({} déjà là)", c.already) } else { String::new() };
                 format!("{} fichiers copiés{already} dans {folder} : {}", c.photos, retouch::editor_name(editor))
@@ -784,9 +754,12 @@ impl App {
         };
         match pending {
             Pending::Trash(files) if ok => self.finish_trash(files, event_loop),
-            Pending::Editor if ok && !out.is_empty() => {
+            Pending::Editor(then_retouch) if ok && !out.is_empty() => {
                 retouch::save_editor(&out);
-                self.retouch_with(&out);
+                self.editor = Some(out.clone());
+                if then_retouch {
+                    self.retouch_with(&out);
+                }
             }
             Pending::Copy if ok => self.copy_selection_now(),
             Pending::Retouch(choose) if ok => self.retouch_now(choose),
@@ -865,7 +838,7 @@ impl App {
         next.burst_filter = self.burst_filter;
         next.flat = self.flat;
         next.flat_chosen = self.flat_chosen;
-        next.copy_kind = self.copy_kind;
+        next.copy_files = self.copy_files;
         next.loupe_on = self.loupe_on;
         next.af_loupe = self.af_loupe;
         next.af_frame = self.af_frame;
@@ -1014,6 +987,31 @@ impl App {
         self.refresh_visible();
     }
 
+    /// Outils de la rangée du haut du panneau, au clavier ou à la souris : L loupe,
+    /// A loupe AF, C cadre AF, N vue la plus nette, G ligne du Live GND.
+    fn tool(&mut self, key: char) {
+        match key {
+            'l' => {
+                self.loupe_on = !self.loupe_on;
+                if !self.loupe_on {
+                    self.af_loupe = false;
+                    self.pin = None;
+                }
+            }
+            'a' => {
+                self.af_loupe = !self.af_loupe;
+                self.loupe_on |= self.af_loupe;
+            }
+            'c' => self.af_frame = !self.af_frame,
+            'n' => self.jump_sharpest(),
+            'g' => self.gnd_line = !self.gnd_line,
+            _ => return,
+        }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
     /// Clic sur une commande de marquage (en haut du panneau).
     fn mark_widget(&mut self, widget: Widget) {
         match widget {
@@ -1035,6 +1033,7 @@ impl App {
             }
             Widget::BurstCheck => self.edit_burst_mark(BurstMark::toggle_retained),
             Widget::BurstReject => self.edit_burst_mark(BurstMark::toggle_rejected),
+            Widget::Tool(key) => self.tool(key),
             _ => {}
         }
     }
@@ -1068,15 +1067,21 @@ impl App {
             }
             Widget::Principles => return self.show_help(help::PRINCIPLES_TITLE, help::PRINCIPLES),
             Widget::Shortcuts => return self.show_help(help::SHORTCUTS_TITLE, help::SHORTCUTS),
-            Widget::CopyKind(kind) => {
-                self.copy_kind = kind;
+            Widget::CopyFile(k) => {
+                let f = &mut self.copy_files;
+                match k {
+                    0 => f.jpeg = !f.jpeg,
+                    1 => f.raw = !f.raw,
+                    _ => f.xmp = !f.xmp,
+                }
                 self.copy_message.clear();
                 return;
             }
+            Widget::Editor => return self.choose_editor(false),
             Widget::Copy => return self.copy_selection(),
             Widget::Trash => return self.ask_trash(),
             Widget::Retouch => return self.retouch(self.modifiers.state().shift_key()),
-            Widget::Photo(_) | Widget::BurstStar(_) | Widget::BurstCheck | Widget::BurstReject => return,
+            Widget::Photo(_) | Widget::BurstStar(_) | Widget::BurstCheck | Widget::BurstReject | Widget::Tool(_) => return,
         }
         self.set_filter(f);
     }
@@ -1190,6 +1195,8 @@ impl App {
             .and_then(|b| self.burst_issues(b).first().copied())
             .map(issue_text)
             .unwrap_or_default();
+        let has_af = self.metas[self.cur].as_ref().is_some_and(|m| m.af.is_some());
+        let can_sharpest = self.sharpness_rank().is_some();
         let burst = self.markable_burst().map(|b| {
             let bm = self.bursts[b].mark;
             Controls { rating: bm.rating, colors: [false; 5], check: bm.retained(), reject: bm.rejected }
@@ -1278,8 +1285,16 @@ impl App {
             plain(issue, 16.0, panel::WARNING, 6.0),
             plain(advice, 16.0, [190, 160, 110], 2.0),
         ];
+        // Rangée d'outils : état (None pour N, qui est une action) et disponibilité.
+        let tools = [
+            Tool { key: 'L', label: "loupe", on: Some(self.loupe_on), enabled: true },
+            Tool { key: 'A', label: "loupe AF", on: Some(self.af_loupe), enabled: has_af },
+            Tool { key: 'C', label: "cadre AF", on: Some(self.af_frame), enabled: has_af },
+            Tool { key: 'N', label: "plus nette", on: None, enabled: can_sharpest },
+            Tool { key: 'G', label: "ligne GND", on: Some(self.gnd_line), enabled: gnd.is_some() },
+        ];
         let key = format!(
-            "{width}|{controls:?}|{burst:?}|{:?}|{mark}|{gnd:?}|{}",
+            "{width}|{tools:?}|{controls:?}|{burst:?}|{:?}|{mark}|{gnd:?}|{}",
             self.locked,
             lines.iter().flat_map(|l| [l.text.as_str(), l.right.as_str()]).collect::<Vec<_>>().join("|")
         );
@@ -1287,6 +1302,7 @@ impl App {
             return;
         }
         let info = Info {
+            tools: &tools,
             controls: &controls,
             burst: burst.as_ref(),
             locked: self.locked.is_some(),
@@ -1627,9 +1643,13 @@ impl App {
             },
             flat_available: self.files.len() < FLAT_MAX,
             flat,
-            copy_kind: self.copy_kind,
-            copy_label: format!("Copier {count} {what}"),
+            copy_files: self.copy_files,
+            count_label: format!("{count} {what}"),
             copy_message: self.copy_message.clone(),
+            editor_label: match &self.editor {
+                Some(id) => format!("Logiciel : {}", retouch::editor_name(id)),
+                None => "Choisir le logiciel…".to_string(),
+            },
         };
         let key = format!("{width}x{height} {status} {filter_controls:?} {burst_filter:?} {filter_text} {view:?} {entries:?}");
         if key != self.list_key {
