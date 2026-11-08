@@ -148,10 +148,17 @@ pub struct Tool {
 
 /// Haut du panneau : outils, rangées de commandes et ce qu'on lit à leur droite.
 pub struct Info<'a> {
+    /// Vue de la liste : à plat ou par rafales ; à plat proposée seulement pour
+    /// les petits dossiers.
+    pub flat_available: bool,
+    pub flat: bool,
     pub tools: &'a [Tool],
     pub controls: &'a Controls,
     /// Rangée de la rafale, si son marquage est possible.
     pub burst: Option<&'a Controls>,
+    /// Vue isolée en vue par rafales : la rangée de la rafale garde sa place (la
+    /// liste ne saute pas) et dit « Vue isolée », sans commandes.
+    pub isolated: bool,
     pub locked: bool,
     /// État de la photo en toutes lettres, et sa couleur.
     pub mark: (&'a str, [u8; 3]),
@@ -170,7 +177,8 @@ pub struct Row {
     pub picks: Vec<usize>,
     /// Première image visible (cible d'un clic).
     pub first: usize,
-    pub number: usize,
+    /// Numéro parmi les vraies rafales ; None pour une vue isolée.
+    pub number: Option<usize>,
     /// Rythme mesuré, en images/s.
     pub rate: Option<f32>,
     pub marked: usize,
@@ -209,8 +217,6 @@ pub enum Entry {
 pub struct View {
     /// Rafale bloquée : la ligne d'état devient un bandeau, avec un cadenas.
     pub locked: bool,
-    pub flat_available: bool,
-    pub flat: bool,
     pub copy_files: CopyFiles,
     /// « 12 retenues », « 40 filtrées » ; compte rendu de la dernière copie.
     pub count_label: String,
@@ -508,15 +514,24 @@ impl Canvas {
 
     /// Bouton texte ; renvoie sa largeur.
     fn button(&mut self, font: &Font, x: f32, y: f32, label: &str, on: bool) -> f32 {
+        self.button_state(font, x, y, label, on, true)
+    }
+
+    /// Bouton texte, grisé s'il n'est pas disponible ; renvoie sa largeur.
+    fn button_state(&mut self, font: &Font, x: f32, y: f32, label: &str, on: bool, enabled: bool) -> f32 {
         let w = button_width(font, label);
         if on {
             self.rect(x, y, w, BUTTON_H, [255, 255, 255], 0.16);
         } else {
             for (rx, ry, rw, rh) in [(x, y, w, 1.0), (x, y + BUTTON_H - 1.0, w, 1.0), (x, y, 1.0, BUTTON_H), (x + w - 1.0, y, 1.0, BUTTON_H)] {
-                self.rect(rx, ry, rw, rh, [255, 255, 255], 0.22);
+                self.rect(rx, ry, rw, rh, [255, 255, 255], if enabled { 0.22 } else { 0.1 });
             }
         }
-        let color = if on { [235, 235, 235] } else { [150, 150, 150] };
+        let color = match (on, enabled) {
+            (true, _) => [235, 235, 235],
+            (false, true) => [150, 150, 150],
+            (false, false) => [85, 85, 85],
+        };
         self.text(font, x + 10.0, y + 17.0, x + w, label, 15.0, color);
         w
     }
@@ -648,15 +663,37 @@ impl Panel {
         }
     }
 
+    /// Message au centre de la fenêtre voilée, pendant qu'une fenêtre zenity attend
+    /// une réponse : (pixels, largeur, hauteur).
+    pub fn render_message(&self, lines: &[&str]) -> (Vec<u8>, u32, u32) {
+        let Some(font) = &self.font else { return (vec![0; 4], 1, 1) };
+        let sizes = [20.0, 16.0];
+        let w = lines.iter().zip(sizes.iter().cycle()).map(|(l, &s)| text_width(font, l, s)).fold(0.0, f32::max);
+        let (w, h) = ((w + 2.0 * PADDING).ceil() as u32, (32.0 * lines.len() as f32 + PADDING).ceil() as u32);
+        let mut canvas = Canvas::new(w, h);
+        canvas.rect(0.0, 0.0, w as f32, h as f32, [32, 32, 32], 0.95);
+        for (rx, ry, rw, rh) in [(0.0, 0.0, w as f32, 1.0), (0.0, h as f32 - 1.0, w as f32, 1.0), (0.0, 0.0, 1.0, h as f32), (w as f32 - 1.0, 0.0, 1.0, h as f32)] {
+            canvas.rect(rx, ry, rw, rh, [255, 255, 255], 0.25);
+        }
+        for (k, (line, &size)) in lines.iter().zip(sizes.iter().cycle()).enumerate() {
+            let color = if k == 0 { [235, 235, 235] } else { [160, 160, 160] };
+            canvas.text_on(font, PADDING, PADDING / 2.0 + 24.0 + 32.0 * k as f32, w as f32, line, size, color);
+        }
+        (canvas.pixels, w, h)
+    }
+
     /// Rend la rangée de commandes de la photo, celle de sa rafale (si son
     /// marquage est possible), puis les lignes d'informations, en largeur `width`.
     pub fn render_info(&self, width: u32, info: &Info, lines: &[Line]) -> (Vec<u8>, u32, u32, Vec<Hit>) {
         let Some(font) = &self.font else {
             return (vec![0; 4], 1, 1, Vec::new());
         };
-        let top = INFO_TOP + BUTTON_H + 10.0;
+        let tools_y = INFO_TOP + BUTTON_LINE;
+        let top = tools_y + BUTTON_H + 10.0;
         let burst_y = top + CTRL + BURST_ROW_GAP;
-        let mut y = if info.burst.is_some() { burst_y + CTRL } else { top + CTRL } + 6.0;
+        // Seconde rangée (rafale, ou « Vue isolée ») en vue par rafales.
+        let two_rows = info.burst.is_some() || info.isolated;
+        let mut y = if two_rows { burst_y + CTRL } else { top + CTRL } + 6.0;
         let mut baselines = Vec::with_capacity(lines.len());
         for line in lines {
             let m = font.horizontal_line_metrics(line.size).unwrap();
@@ -667,41 +704,73 @@ impl Panel {
         // Double trait en bas : sépare les informations de la liste des rafales.
         let height = (y + 16.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
-        // Tout en haut : les outils, cliquables comme leurs touches.
+        // Tout en haut : la vue de la liste à gauche, l'aide à droite.
         let mut hits = Vec::new();
         let mut x = PADDING;
-        for t in info.tools {
-            let w = canvas.tool(font, x, INFO_TOP, t);
-            hits.push(Hit { widget: Widget::Tool(t.key.to_ascii_lowercase()), x, y: INFO_TOP, w, h: BUTTON_H });
+        for (label, widget, on, enabled) in [("Rafales", Widget::Bursts, !info.flat, true), ("À plat", Widget::Flat, info.flat, info.flat_available)] {
+            let w = canvas.button_state(font, x, INFO_TOP, label, on, enabled);
+            if enabled {
+                hits.push(Hit { widget, x, y: INFO_TOP, w, h: BUTTON_H });
+            }
             x += w + 6.0;
         }
-        hits.extend(canvas.controls(PADDING, top, info.controls));
+        let mut x = width as f32 - PADDING;
+        for (label, widget) in [("Raccourcis", Widget::Shortcuts), ("Principes", Widget::Principles)] {
+            x -= button_width(font, label);
+            let w = canvas.button(font, x, INFO_TOP, label, false);
+            hits.push(Hit { widget, x, y: INFO_TOP, w, h: BUTTON_H });
+            x -= 6.0;
+        }
+        // Puis les outils, cliquables comme leurs touches.
+        let mut x = PADDING;
+        for t in info.tools {
+            let w = canvas.tool(font, x, tools_y, t);
+            hits.push(Hit { widget: Widget::Tool(t.key.to_ascii_lowercase()), x, y: tools_y, w, h: BUTTON_H });
+            x += w + 6.0;
+        }
+        // Vue par rafales : « Photo » et « Rafale » en tête de leur rangée, dans une
+        // même colonne (place du cadenas comprise), pour que les étoiles, ✓ et ✕ des
+        // deux rangées tombent les uns sous les autres.
+        const LABEL_X: f32 = PADDING + 24.0;
+        let label_col = if two_rows {
+            24.0 + text_width(font, "Photo", 15.0).max(text_width(font, "Rafale", 15.0)) + 12.0
+        } else {
+            0.0
+        };
+        if two_rows {
+            canvas.text(font, LABEL_X, top + 16.0, width as f32, "Photo", 15.0, [150, 150, 150]);
+        }
+        hits.extend(canvas.controls(PADDING + label_col, top, info.controls));
         let locked = info.locked;
         // À droite des commandes : l'état de la photo, puis le Live GND calé à droite.
         let mut mark_end = width as f32 - PADDING / 2.0;
         if let Some((label, dark)) = info.gnd {
+            // Calé à droite, sur la rangée de la rafale quand elle existe : elle y est
+            // libre, et l'état de la photo garde sa place.
+            let y = if two_rows { burst_y } else { top };
             let x = width as f32 - PADDING - text_width(font, label, 16.0);
-            canvas.text(font, x, top + 17.0, width as f32, label, 16.0, [235, 235, 235]);
+            canvas.text(font, x, y + 17.0, width as f32, label, 16.0, [235, 235, 235]);
             let disc = x - GND_DISC - 6.0;
-            canvas.gnd_disc(disc, top + 1.0, GND_DISC, dark);
-            mark_end = disc - 8.0;
+            canvas.gnd_disc(disc, y + 1.0, GND_DISC, dark);
+            if !two_rows {
+                mark_end = disc - 8.0;
+            }
         }
         let mark_x = hits.last().map_or(PADDING, |h| h.x + h.w) + 14.0;
         canvas.text(font, mark_x, top + 17.0, mark_end, info.mark.0, 16.0, info.mark.1);
         if let Some(c) = info.burst {
             // « Rafale » (cadenas bleu devant, si elle est bloquée) puis ses
             // étoiles ; ✓ et ✕ sous ceux de la photo.
-            let mut x = PADDING;
             if locked {
-                canvas.padlock(x, burst_y + 1.0, 18.0, LOCKED);
-                x += 24.0;
+                canvas.padlock(PADDING, burst_y + 1.0, 18.0, LOCKED);
             }
             let color = if locked { LOCKED } else { [150, 150, 150] };
-            canvas.text(font, x, burst_y + 16.0, width as f32, "Rafale", 15.0, color);
-            let label: f32 = "Rafale".chars().map(|ch| font.metrics(ch, 15.0).advance_width).sum();
-            canvas.stars(x + label + 10.0, burst_y, c.rating, Widget::BurstStar, &mut hits);
+            canvas.text(font, LABEL_X, burst_y + 16.0, width as f32, "Rafale", 15.0, color);
+            canvas.stars(PADDING + label_col, burst_y, c.rating, Widget::BurstStar, &mut hits);
             let check_x = hits.iter().find(|h| h.widget == Widget::Check).map_or(PADDING, |h| h.x);
             canvas.check_reject(check_x, burst_y, c, Widget::BurstCheck, Widget::BurstReject, &mut hits);
+        } else if info.isolated {
+            canvas.text(font, LABEL_X, burst_y + 16.0, width as f32, "Vue isolée", 15.0, [120, 120, 120]);
         }
         for dy in [7.0, 3.0] {
             canvas.rect(PADDING / 2.0, height as f32 - dy, width as f32 - PADDING, 1.0, [255, 255, 255], 0.22);
@@ -758,10 +827,16 @@ impl Panel {
         let mut hits = Vec::new();
         let mut tracks = Vec::new();
         let bar = height as f32 - BOTTOM_BAR;
-        let mut bar_hits = canvas.controls(PADDING, bar + 10.0, filter);
         let Some(font) = self.font.take() else {
+            let bar_hits = canvas.controls(PADDING, bar + 10.0, filter);
             return ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, bar_hits, tracks };
         };
+        // « Photos » et « Rafales » en tête des deux rangées du filtre, dans une même
+        // colonne : étoiles et ✓ tombent les uns sous les autres.
+        let label_col = text_width(&font, "Photos", 15.0).max(text_width(&font, "Rafales", 15.0)) + 12.0;
+        let photo_on = filter != &Controls::default();
+        canvas.text(&font, PADDING, bar + 10.0 + 16.0, width as f32, "Photos", 15.0, if photo_on { [215, 215, 215] } else { [120, 120, 120] });
+        let mut bar_hits = canvas.controls(PADDING + label_col, bar + 10.0, filter);
         let (tw, th) = thumb_size(width);
         let max_x = width as f32 - PADDING / 2.0;
 
@@ -787,8 +862,7 @@ impl Panel {
             let on = c != &Controls::default();
             let color = if on { [215, 215, 215] } else { [120, 120, 120] };
             canvas.text(&font, PADDING, y + 16.0, max_x, "Rafales", 15.0, color);
-            let label: f32 = "Rafales".chars().map(|ch| font.metrics(ch, 15.0).advance_width).sum();
-            canvas.stars(PADDING + label + 10.0, y, c.rating, Widget::FilterBurstStar, &mut bar_hits);
+            canvas.stars(PADDING + label_col, y, c.rating, Widget::FilterBurstStar, &mut bar_hits);
             let check_x = bar_hits.iter().find(|h| h.widget == Widget::Check).map_or(PADDING, |h| h.x);
             canvas.check_box(check_x, y, c.check, Widget::FilterBurstCheck, &mut bar_hits);
         }
@@ -820,30 +894,11 @@ impl Panel {
             x += w + 6.0;
         }
 
-        // Ligne de boutons : vue à gauche, aide à droite.
+        // Dernière ligne : la corbeille, s'il y a des photos rejetées.
         let by = by + BUTTON_LINE;
-        if view.flat_available {
-            let mut x = PADDING;
-            for (label, widget, on) in [("Rafales", Widget::Bursts, !view.flat), ("À plat", Widget::Flat, view.flat)] {
-                let w = canvas.button(&font, x, by, label, on);
-                bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
-                x += w + 6.0;
-            }
-        }
-        let mut left = PADDING;
-        if view.flat_available {
-            left = bar_hits.last().map_or(PADDING, |h| h.x + h.w) + 12.0;
-        }
         if let Some(label) = &view.trash_label {
-            let w = canvas.danger_button(&font, left, by, label);
-            bar_hits.push(Hit { widget: Widget::Trash, x: left, y: by, w, h: BUTTON_H });
-        }
-        let mut x = width as f32 - PADDING;
-        for (label, widget) in [("Raccourcis", Widget::Shortcuts), ("Principes", Widget::Principles)] {
-            x -= button_width(&font, label);
-            let w = canvas.button(&font, x, by, label, false);
-            bar_hits.push(Hit { widget, x, y: by, w, h: BUTTON_H });
-            x -= 6.0;
+            let w = canvas.danger_button(&font, PADDING, by, label);
+            bar_hits.push(Hit { widget: Widget::Trash, x: PADDING, y: by, w, h: BUTTON_H });
         }
 
         let mut y = 0.0;
@@ -874,7 +929,10 @@ impl Panel {
                         Some(n) => format!("{n} / {} images", row.len),
                         None => format!("{} images", row.len),
                     };
-                    let header = format!("Rafale {}   {clock}   {count}{rate}", row.number);
+                    let header = match row.number {
+                        Some(n) => format!("Rafale {n}   {clock}   {count}{rate}"),
+                        None => format!("Vue isolée   {clock}"),
+                    };
                     let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
                     // À droite : marquage de la rafale, puis nombre de photos retenues.
                     let count_x = width as f32 - PADDING - 40.0;

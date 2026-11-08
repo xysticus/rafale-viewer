@@ -44,11 +44,15 @@ transition sur la photo.
 RAFALES ET VUE À PLAT
 
 • Les rafales sont reconnues toutes seules : numéro de vue des boîtiers OM System et \
-Olympus, sinon heure de prise de vue. ↑ et ↓ sautent d'une rafale à l'autre.
+Olympus, sinon heure de prise de vue. ↑ et ↓ sautent d'une rafale à l'autre. Une \
+photo prise seule est une « vue isolée » : elle a sa ligne dans la liste, mais ni \
+numéro de rafale, ni marquage de rafale, ni blocage.
 • La liste à droite montre chaque rafale avec 4 vignettes réparties du début à la fin. \
 Un clic sur une ligne va au début de la rafale.
-• Vue « À plat » (dossiers de moins de 300 photos) : une vignette par photo, avec son \
-marquage. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangée. Les \
+• Vue « À plat » : une vignette par photo, avec son marquage. Boutons « Rafales » et \
+« À plat » tout en haut du panneau, ou touche V. Elle n'est proposée que pour les \
+dossiers de moins de 300 photos : au-delà, la grille serait trop longue à parcourir \
+et « À plat » est grisé. Un clic va à la photo ; ↑ et ↓ montent ou descendent d'une rangée. Les \
 photos y sont isolées : pas de blocage ni de marquage des rafales.
 
 JUGER LES RAFALES
@@ -200,6 +204,7 @@ G : affiche ↔ masque la ligne de transition sur la photo
 FENÊTRE
 
 F ou F11 : plein écran
+V : vue par rafales ↔ vue à plat (dossiers de moins de 300 photos)
 Ctrl+O : ouvrir un autre dossier
 Ctrl+Q : quitter
 
@@ -220,7 +225,8 @@ Molette sur le panneau, ou ascenseur : faire défiler la liste
 JPEG / RAW / XMP : fichiers copiés, cochés indépendamment ; « Copier » : comme Ctrl+C
 « Logiciel : … » : choisir le logiciel de retouche
 « Retoucher » : copie la sélection à côté de la séance et lance le logiciel de retouche
-Rafales / À plat : vue de la liste (À plat : dossiers de moins de 300 photos)
+Rafales / À plat, tout en haut : vue de la liste, comme V (À plat grisé à partir de 300 photos)
+Principes / Raccourcis, tout en haut à droite : ces fenêtres d'aide
 Corbeille : N rejetées : met les photos rejetées à la corbeille (après confirmation)
 Corbeille : rafale N : rafale bloquée et rejetée, toute la rafale à la corbeille
 ";

@@ -64,8 +64,10 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 
 ```
 ┌──────────────────────────────────────┬──────────────────────┐
-│                                      │ ★★★☆☆ ■■■ [✓][✕] ◐GND│
-│                                      │ Rafale ★★☆☆☆  [✓] [✕]│
+│                                      │ [Rafales][À plat] [?]│
+│                                      │ [L][A][C][N][G]      │
+│                                      │ Photo  ★★★☆☆ ■ [✓][✕]│
+│                                      │ Rafale ★★☆☆☆ [✓]◐GND │
 │                                      │ PA290123.JPG  123/235│
 │              photo                   │ 1/500 s f/4 ISO … ·… │
 │        (calée à gauche ;             │ RAW : raw/…  Rafale 1│
@@ -81,7 +83,7 @@ Rafale recense la carte et affiche un résumé avant de copier : nombre de JPEG 
 │                                      │ ★★☆☆☆ ■■■■■ [ ] [ ] │ ← filtre photos
 │                                      │ Rafales ★☆☆☆☆    [ ] │ ← filtre rafales
 │                                      │ [JPEG][RAW][…] Copier│ ← copie
-│                                      │ [Rafales][À plat]  … │ ← vue, aide
+│                                      │ [Corbeille : 3 …]    │ ← rejetées
 └──────────────────────────────────────┴──────────────────────┘
 ```
 
@@ -90,7 +92,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 **Tout en haut, les outils** : **L** loupe, **A** loupe AF, **C** cadre AF, **N** vue la plus nette, **G** ligne du Live GND. Un clic fait la même chose que la touche. Fond bleu : actif ; contour : coupé ; grisé : sans effet sur cette photo (pas de zone AF, pas de rafale à mesurer, pas de Live GND). N est une action, sans état.
 
 **En haut, la photo affichée :**
-- les commandes de marquage de la photo (étoiles, couleur, retenue, rejet), l'état de la photo en toutes lettres et, s'il a servi, le Live GND (voir « Live GND ») ; dessous, celles de sa rafale (rangée « Rafale » : étoiles, retenue, rejet) ;
+- les commandes de marquage de la photo (étoiles, couleur, retenue, rejet) et son état en toutes lettres ; dessous, celles de sa rafale (étoiles, retenue, rejet) et, s'il a servi, le Live GND (voir « Live GND »). En vue par rafales, les deux rangées commencent par « Photo » et « Rafale », alignées ; hors de cette vue, la rangée de la photo est seule et le Live GND à sa droite ;
 - le nom du fichier et, à droite, la position dans le dossier ;
 - l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
 - le RAW associé et, à droite, la rafale, la place dans la rafale et le rythme ;
@@ -99,13 +101,15 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, puis à droite le marquage de la rafale (étoiles et ✓, ou ✕), un ⚠ si elle est signalée, et « ✓ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
 
-**En bas, la barre de filtre** des photos, puis celle des rafales (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis une ligne de boutons : **Rafales / À plat** à gauche, **Principes** et **Raccourcis** à droite.
+**En bas, la barre de filtre** des photos, puis celle des rafales (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis, s'il y a des photos rejetées, le bouton de corbeille.
+
+**Tout en haut du panneau**, au-dessus des outils : **Rafales / À plat** à gauche (touche **V** ; « À plat » est grisé à partir de 300 photos), **Principes** et **Raccourcis** à droite.
 
 **Vue au lancement :** À plat, sauf si Rafale détecte une rafale de plus de 5 photos ; dans ce cas, vue Rafales. Les boutons permettent toujours de changer.
 
 **Vue À plat.** Pour un dossier de moins de 300 photos, le bouton « À plat » remplace la liste des rafales par une grille : une vignette par photo, avec son marquage (étoiles ou croix de rejet en haut à gauche, couleur en haut à droite). Un cadre bleu entoure la photo affichée. Un clic sur une vignette affiche la photo. Le filtre et le marquage des photos fonctionnent comme en vue Rafales. ↑ et ↓ montent ou descendent d'une rangée. Les photos y sont isolées : le blocage, le marquage et le filtre des rafales y sont désactivés.
 
-**Principes et Raccourcis** ouvrent une fenêtre d'aide dont on peut sélectionner et copier le texte. Tant qu'elle est ouverte, la fenêtre de Rafale ne réagit plus ; ferme l'aide pour reprendre.
+**Principes et Raccourcis** ouvrent une fenêtre d'aide dont on peut sélectionner et copier le texte. Tant qu'elle est ouverte, comme pour les fenêtres de confirmation, la fenêtre de Rafale est voilée et ne réagit plus ; ferme l'aide pour reprendre. Si tu es allé dans une autre application, un clic sur Rafale ramène la fenêtre ouverte au premier plan.
 
 ## Clavier
 
@@ -133,6 +137,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | C | Affiche ↔ masque le cadre vert de la zone AF |
 | G | Affiche ↔ masque la ligne de transition du Live GND sur la photo |
 | F ou F11 | Plein écran |
+| V | Vue par rafales ↔ vue à plat (dossiers de moins de 300 photos) |
 | Ctrl+O | Ouvrir un autre dossier, sans fermer la fenêtre |
 | Ctrl+Q | Quitter |
 
@@ -150,7 +155,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 - **Loupe AF (touche A).** A active la loupe, qui se place d'elle-même sur la zone AF de chaque vue, et suit donc le visage dans toute la rafale, même s'il se déplace dans le cadre. Sa bordure est verte, et le panneau indique « Loupe sur la zone AF ». Une photo sans zone AF retombe sur la loupe sous le pointeur. Un clic sur la photo fige la loupe, ce qui l'emporte sur la loupe AF ; A la coupe.
 - **Netteté AF.** À l'arrêt, Rafale mesure en tâche de fond la netteté de la zone AF de chaque vue de la rafale, en commençant par la photo affichée puis ses voisines. Le panneau affiche « Netteté AF : 87 % de la plus nette · rang 4 / 54 », en vert pour la plus nette, avec « (mesure 30 / 54) » tant que toute la rafale n'est pas mesurée. **N** va à la vue la plus nette (parmi celles qui passent le filtre). La mesure ne ralentit pas le défilé : elle s'interrompt dès que tu reprends. Deux limites : l'indice ne compare que les vues d'une même rafale (rien pour une vue isolée), et il mesure ce qui est dans la zone AF : si l'AF a visé le col plutôt que le visage, l'indice baisse aussi. Regarde alors le cadre vert. Comme la loupe normale, elle s'affiche à l'arrêt, une fois la pleine résolution chargée.
 - **Commandes en haut du panneau** (marquage de la photo affichée) : clic sur une étoile = cette note (re-clic sur la même = aucune étoile) ; clic sur une couleur = cette étiquette (re-clic = aucune) ; case ✓ = retenue / non retenue, comme Espace ; case ✕ = rejetée / non rejetée, comme X. Une case décochée montre sa coche ou sa croix en gris. La rangée « Rafale », en dessous, marque de la même façon la rafale de la photo affichée.
-- **Barre de filtre en bas de la liste** (mêmes commandes) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. La rangée « Rafales », en dessous, filtre les rafales : une étoile = rafales notées au moins autant, ✓ = rafales retenues ; seules les photos des rafales qui passent sont montrées, et le filtre des photos s'y ajoute. « effacer » supprime les deux. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
+- **Barre de filtre en bas de la liste** (mêmes commandes, rangée « Photos » puis rangée « Rafales », alignées ; le libellé s'éclaire quand son filtre est actif) : seules les photos qui passent le filtre sont montrées, dans la liste comme au défilé (←, →, ↑, ↓, Début, Fin). Une étoile = au moins cette note ; plusieurs couleurs = l'une ou l'autre ; ✓ et ✕ = retenues, rejetées, ou les deux si les deux sont cochées. Les critères se cumulent. La rangée « Rafales », en dessous, filtre les rafales : une étoile = rafales notées au moins autant, ✓ = rafales retenues ; seules les photos des rafales qui passent sont montrées, et le filtre des photos s'y ajoute. « effacer » supprime les deux. Si la photo affichée ne passe plus le filtre après un marquage, elle reste à l'écran jusqu'au prochain déplacement.
 - **Clic sur une ligne de la liste :** affiche la première photo de cette rafale (la première qui passe le filtre). En vue À plat, ou dans la grille d'une rafale bloquée, un clic sur une vignette affiche cette photo.
 - **Molette au-dessus du panneau :** fait défiler la liste. Elle se recentre dès que tu changes de rafale.
 - **Ascenseur à droite de la liste :** tu peux le faire glisser. Un clic sur la piste y amène directement le curseur.
@@ -233,7 +238,7 @@ Si la photo a un RAW de même nom (`PA290123.ORF`, `.DNG`, `.CR3`, `.NEF`…), d
 | RawTherapee (5.11 et plus) | étoiles, couleur (pas le rejet) | Activer la synchronisation des notes et couleurs avec les XMP (Préférences › Navigateur de fichiers). Mettre `XMPSidecarStyle=ext` dans la section `[Metadata]` du fichier `options` de RawTherapee (version Flatpak : `~/.var/app/com.rawtherapee.RawTherapee/config/RawTherapee/options` ; paquet classique : `~/.config/RawTherapee/options`), RawTherapee fermé, pour qu'il lise `PA290123.ORF.xmp` au lieu de `PA290123.xmp`. Une photo rejetée y apparaît sans étoile. |
 | Lightroom | étoiles, rejet, couleur | Conventions Lightroom respectées (`xmp:Rating`, `xmp:Label`). |
 
-**Le fichier XMP d'un autre logiciel n'est pas modifié s'il contient quelque chose** : une note, une couleur, un historique de retouches darktable, un titre, des mots-clés… Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe, lecture seule ». Les touches de marquage sont alors sans effet sur cette photo.
+**Le fichier XMP d'un autre logiciel n'est pas modifié s'il contient quelque chose** : une note, une couleur, un historique de retouches darktable, un titre, des mots-clés… Rafale le lit mais n'y touche pas, et le panneau indique « XMP externe » (lecture seule). Les touches de marquage sont alors sans effet sur cette photo.
 
 Un XMP **vierge** d'un autre logiciel, comme ceux que darktable crée pour chaque photo à l'import, est remplacé par celui de Rafale dès que tu marques la photo. Tant que tu ne la marques pas, Rafale n'y touche pas. Tu peux donc essayer un autre logiciel sur une séance sans t'empêcher d'y trier ensuite. darktable ne relit pas tout seul les `.xmp` modifiés : utilise sa commande de relecture des sidecars.
 
@@ -273,7 +278,7 @@ Une fenêtre demande d'abord confirmation, avec le nombre de fichiers et la plac
 
 ## Rafales et réglages de l'appareil
 
-- **Rafales :** elles sont reconnues grâce au numéro de vue que les boîtiers OM System et Olympus inscrivent dans chaque fichier (1, 2, 3…). Une nouvelle rafale commence quand ce numéro repart à 1. Pour les autres appareils, Rafale se sert de l'heure de prise de vue : plus d'une seconde d'écart entre deux photos, et c'est une nouvelle rafale.
+- **Rafales :** elles sont reconnues grâce au numéro de vue que les boîtiers OM System et Olympus inscrivent dans chaque fichier (1, 2, 3…). Une nouvelle rafale commence quand ce numéro repart à 1. Pour les autres appareils, Rafale se sert de l'heure de prise de vue : plus d'une seconde d'écart entre deux photos, et c'est une nouvelle rafale. Une photo prise seule est une **vue isolée** : elle a sa ligne dans la liste (« Vue isolée » et son heure), mais pas de numéro, et ne se marque ni ne se bloque comme une rafale ; ↑ et ↓ la sautent quand une rafale est bloquée. Les rafales sont numérotées 1, 2, 3… sans compter les vues isolées.
 - **Rythme (images/s) :** l'heure de prise de vue n'est enregistrée qu'à la seconde près, donc le rythme n'est exact que pour une rafale qui s'étale sur au moins trois secondes distinctes, soit environ 30 images à 25 i/s. Pour les rafales plus courtes, rien n'est affiché.
 - **Mode image et filtre de bruit :** ils sont lus dans les données du boîtier (OM System / Olympus uniquement). Les noms de modes sont ceux d'exiftool, en anglais (« Natural », « i-Enhance »). Ils ne correspondent pas aux numéros du menu de l'appareil : par exemple, i-Enhance est le n° 1 du menu et Natural le n° 3.
 
