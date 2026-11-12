@@ -1337,22 +1337,17 @@ impl App {
             ),
             None => String::new(),
         };
-        let loupe_text = if self.pin.is_some() {
-            "Loupe figée"
-        } else if self.af_loupe {
-            if meta.is_some_and(|m| m.af.is_some()) { "Loupe AF" } else { "Loupe AF : pas de zone" }
-        } else if self.loupe_on {
-            "Loupe"
-        } else {
-            ""
-        };
         let mut lines = vec![
             Line { right: format!("{} / {}", self.cur + 1, self.files.len()), ..plain(name, 20.0, [230, 230, 230], 6.0) },
             plain(exposure, 16.0, [205, 205, 205], 3.0),
             plain(settings, 16.0, [175, 175, 175], 2.0),
             Line { right: burst_text, ..plain(raw_text, 16.0, DIM, 3.0) },
-            Line { right: loupe_text.to_string(), right_color: [90, 160, 255], ..plain(sharp_text, 16.0, sharp_color, 3.0) },
         ];
+        // Netteté AF, quand elle existe (vue d'une rafale, zone AF connue). L'état de
+        // la loupe se lit sur les boutons du haut.
+        if !sharp_text.is_empty() {
+            lines.push(plain(sharp_text, 16.0, sharp_color, 3.0));
+        }
         // Règle de cohérence non respectée par la rafale, et quoi faire : seulement sur
         // une rafale signalée (la place gagnée le reste du temps vaut une ligne de vignettes).
         if !issue.is_empty() {
