@@ -28,6 +28,8 @@ pub struct Meta {
     pub picture_mode: Option<String>,
     /// Filtre de bruit (NoiseFilter OM System / Olympus).
     pub noise_filter: Option<&'static str>,
+    /// Luminosité (Gradation OM System / Olympus) : « luminosité normale », etc.
+    pub gradation: Option<String>,
     /// Vignette EXIF, encore compressée en JPEG.
     pub thumb: Option<Vec<u8>>,
     pub orientation: u8,
@@ -147,6 +149,7 @@ pub fn spawn(files: Arc<Vec<PathBuf>>, tx: Sender<(usize, Meta)>, wake: Waker) {
                         exposure: String::new(),
                         picture_mode: None,
                         noise_filter: None,
+                        gradation: None,
                         thumb: None,
                         orientation: 1,
                         af: None,
@@ -221,6 +224,7 @@ fn read_meta(path: &std::path::Path) -> Option<Meta> {
         exposure,
         picture_mode: olympus.picture_mode,
         noise_filter: olympus.noise_filter,
+        gradation: olympus.gradation,
         thumb,
         orientation,
         af: olympus.af,
@@ -326,6 +330,7 @@ struct Olympus {
     drive: Option<(u16, u16)>,
     picture_mode: Option<String>,
     noise_filter: Option<&'static str>,
+    gradation: Option<String>,
     af: Option<[f32; 4]>,
     gnd: Option<Gnd>,
 }
@@ -400,6 +405,17 @@ fn olympus_settings(mn: &[u8]) -> Option<Olympus> {
         )
     });
     // NoiseFilter 0x0527 : [valeur, min, max].
+    // Gradation 0x050f (« Luminosité » dans le menu) : [valeur, min, max, …],
+    // -1 basse, 0 normale, 1 haute (relevé sur OM-1 Mk II). Le mode Auto n'a pas
+    // encore été vu : une autre valeur est affichée telle quelle.
+    let gradation = values(0x050f).and_then(|v| {
+        Some(match *v.first()? {
+            -1 => "luminosité basse".to_string(),
+            0 => "luminosité normale".to_string(),
+            1 => "luminosité haute".to_string(),
+            n => format!("luminosité {n}"),
+        })
+    });
     let noise_filter = values(0x0527).and_then(|v| match v.as_slice() {
         [-2, -2, 1] => Some("coupé"),
         [-1, -2, 1] => Some("faible"),
@@ -453,6 +469,7 @@ fn olympus_settings(mn: &[u8]) -> Option<Olympus> {
         drive,
         picture_mode,
         noise_filter,
+        gradation,
         af,
         gnd,
     })
