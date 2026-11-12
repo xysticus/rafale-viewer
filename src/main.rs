@@ -1314,10 +1314,13 @@ impl App {
         };
         const DIM: [u8; 3] = [150, 150, 150];
         let plain = |text: String, size: f32, color: [u8; 3], gap: f32| Line { text, size, color, gap, right: String::new(), right_color: DIM };
+        // Exposition sur sa ligne, réglages de l'image (mode, luminosité, filtre de
+        // bruit) sur la suivante : ensemble, ils ne tiennent pas dans la largeur.
+        let exposure = meta.map(|m| m.exposure.clone()).unwrap_or_default();
         let settings = meta
             .map(|m| {
-                let mut parts = vec![m.exposure.clone()];
-                parts.extend(m.picture_mode.clone());
+                let mut parts: Vec<String> = m.picture_mode.iter().cloned().collect();
+                parts.extend(m.gradation.clone());
                 parts.extend(m.noise_filter.map(|n| format!("filtre bruit {n}")));
                 parts.join("   ·   ")
             })
@@ -1343,15 +1346,19 @@ impl App {
         } else {
             ""
         };
-        let lines = [
+        let mut lines = vec![
             Line { right: format!("{} / {}", self.cur + 1, self.files.len()), ..plain(name, 20.0, [230, 230, 230], 6.0) },
-            plain(settings, 16.0, [205, 205, 205], 3.0),
+            plain(exposure, 16.0, [205, 205, 205], 3.0),
+            plain(settings, 16.0, [175, 175, 175], 2.0),
             Line { right: burst_text, ..plain(raw_text, 16.0, DIM, 3.0) },
             Line { right: loupe_text.to_string(), right_color: [90, 160, 255], ..plain(sharp_text, 16.0, sharp_color, 3.0) },
-            // Règle de cohérence non respectée par la rafale, et quoi faire.
-            plain(issue, 16.0, panel::WARNING, 6.0),
-            plain(advice, 16.0, [190, 160, 110], 2.0),
         ];
+        // Règle de cohérence non respectée par la rafale, et quoi faire : seulement sur
+        // une rafale signalée (la place gagnée le reste du temps vaut une ligne de vignettes).
+        if !issue.is_empty() {
+            lines.push(plain(issue, 16.0, panel::WARNING, 6.0));
+            lines.push(plain(advice, 16.0, [190, 160, 110], 2.0));
+        }
         // Rangée d'outils : état (None pour N, qui est une action) et disponibilité.
         let tools = [
             Tool { key: 'L', label: "loupe", on: Some(self.loupe_on), enabled: true },

@@ -14,7 +14,7 @@ use crate::meta::Meta;
 
 pub const PADDING: f32 = 24.0;
 /// Marge au-dessus des commandes de marquage.
-const INFO_TOP: f32 = 14.0;
+const INFO_TOP: f32 = 8.0;
 pub const THUMBS_PER_ROW: usize = 4;
 const THUMB_GAP: f32 = 8.0;
 const ROW_HEADER: f32 = 25.0;
@@ -702,7 +702,7 @@ impl Panel {
             y += -m.descent + m.line_gap;
         }
         // Double trait en bas : sépare les informations de la liste des rafales.
-        let height = (y + 16.0).ceil() as u32;
+        let height = (y + 18.0).ceil() as u32;
         let mut canvas = Canvas::new(width, height);
         // Tout en haut : la vue de la liste à gauche, l'aide à droite.
         let mut hits = Vec::new();
@@ -772,7 +772,8 @@ impl Panel {
         } else if info.isolated {
             canvas.text(font, LABEL_X, burst_y + 16.0, width as f32, "Vue isolée", 15.0, [120, 120, 120]);
         }
-        for dy in [7.0, 3.0] {
+        // Double trait, avec de l'air au-dessus (texte) et en dessous (liste).
+        for dy in [11.0, 7.0] {
             canvas.rect(PADDING / 2.0, height as f32 - dy, width as f32 - PADDING, 1.0, [255, 255, 255], 0.22);
         }
         let max_x = width as f32 - PADDING / 2.0;

@@ -94,7 +94,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 **En haut, la photo affichée :**
 - les commandes de marquage de la photo (étoiles, couleur, retenue, rejet) et son état en toutes lettres ; dessous, celles de sa rafale (étoiles, retenue, rejet) et, s'il a servi, le Live GND (voir « Live GND »). En vue par rafales, les deux rangées commencent par « Photo » et « Rafale », alignées ; hors de cette vue, la rangée de la photo est seule et le Live GND à sa droite ;
 - le nom du fichier et, à droite, la position dans le dossier ;
-- l'exposition (vitesse, ouverture, ISO), le mode image et le filtre de bruit de l'appareil ;
+- l'exposition (vitesse, ouverture, ISO), puis sur la ligne suivante les réglages de l'image de l'appareil : mode image, luminosité (normale, haute ou basse) et filtre de bruit ;
 - le RAW associé et, à droite, la rafale, la place dans la rafale et le rythme ;
 - la netteté AF et, à droite, l'état de la loupe ;
 - en orange, si la rafale ne respecte pas une règle de cohérence, ce qui ne va pas et quoi faire (voir « Juger les rafales »).
