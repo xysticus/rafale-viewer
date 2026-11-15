@@ -568,7 +568,7 @@ impl Canvas {
     fn compact_rating(&mut self, font: &Font, x: f32, y: f32, rating: u8) -> f32 {
         self.star(x, y + 1.0, 12.0, STAR_ON);
         let n = rating.to_string();
-        self.text(font, x + 13.0, y + 12.0, x + 30.0, &n, 13.0, STAR_ON);
+        self.text(font, x + 13.0, y + 12.0, x + 34.0, &n, 13.0, STAR_ON);
         x + 13.0 + text_width(font, &n, 13.0)
     }
 
@@ -581,7 +581,9 @@ impl Canvas {
         if let Some(b) = &cell.burst {
             let count = format!("×{}", b.len);
             let cw = text_width(font, &count, 13.0);
-            self.text(font, right - cw, y + 12.0, right, &count, 13.0, [150, 150, 150]);
+            // Limite d'écriture un peu au-delà du bord : le dessin d'un chiffre peut
+            // dépasser sa largeur nominale, et le dernier serait coupé (« ×44 » → « ×4 »).
+            self.text(font, right - cw, y + 12.0, right + 4.0, &count, 13.0, [150, 150, 150]);
             right -= cw + 6.0;
             let m = &b.mark;
             if m.rejected || m.picked || m.rating > 0 {
