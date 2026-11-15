@@ -88,6 +88,16 @@ Exigence : ne pas ralentir l'affichage.
 - Le choix des photos représentantes : un passage sur les séquences, après un marquage seulement.
 - Vérifier avec `--bench-scroll` que le défilé en rafale bloquée garde ses 25 images/s, et que la planche de la séance du 15 novembre (315 vignettes ; cache de vignettes de 512 entrées) reste fluide.
 
+**Mesuré le 15 novembre** sur joueur (séance du 15 novembre, 2 792 photos, écran 144 Hz), avec la nouvelle option `--vue plat|rafales` qui permet de lancer la mesure dans la planche : → maintenue pendant 5 s.
+
+| | Vue Rafales | Planche (de vignette en vignette) |
+|---|---|---|
+| 25 i/s (deux passes) | 25,0 ; intervalles 40,0 ms ; 0 à-coup | 25,0 ; intervalles 40,0 ms ; 0 à-coup |
+| 50 i/s | 50,0 ; intervalles 20,0 ms ; 0 à-coup | 50,0 ; intervalles 20,0 ms (max 20,7) ; 0 à-coup |
+| Pleine résolution après relâchement | 260 à 263 ms | 230 à 234 ms |
+
+Dans la planche, chaque pas va sur la photo représentante de la séquence suivante, non contiguë, et la grille est recomposée toutes les 4 vignettes : le préchargement des vignettes voisines suffit, la planche ne coûte aucune marge. Le défilé dans une rafale bloquée est celui de la vue Rafales (même logique de pas).
+
 ## 10. Étapes de réalisation
 
 | Étape | Contenu |
@@ -96,6 +106,6 @@ Exigence : ne pas ralentir l'affichage.
 | 2 | Signe des séquences (pile, « ×25 ») et marquage dans une bande sous la vignette (photo à gauche, cartouche de la rafale à droite), pile verte, vignette grisée — **fait** |
 | 3 | Navigation : flèches dans la planche, Page préc. / suiv. de vignette en vignette, Entrée pour la rafale bloquée et retour — **fait** (préchargement des vignettes voisines ; vers le bas, la dernière vignette s'il n'y en a pas juste en dessous) |
 | 4 | Vue au lancement : mémoire par dossier, règle des rafales de plus de 5 vues — **fait** (troisième colonne « plat » / « rafales » dans le fichier des positions) |
-| 5 | Mesures, aide, guide, conception et README à jour ; version 4.0.0 |
+| 5 | Mesures, aide, guide, conception et README à jour ; version 4.0.0 — **fait** |
 
 Séance d'essai : `~/Images/2026-11-15` (mixte rafales et vues isolées, déjà triée).

@@ -2517,6 +2517,7 @@ fn main() {
 
     let mut target = None;
     let mut fps = DEFAULT_FPS;
+    let mut forced_view: Option<bool> = None;
     let mut bench = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -2531,6 +2532,13 @@ fn main() {
             "--bench-scroll" => {
                 let secs: f64 = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage());
                 bench = Some(bench::Bench::new(Duration::from_secs_f64(secs)));
+            }
+            "--vue" => {
+                forced_view = Some(match args.next().as_deref() {
+                    Some("plat") => true,
+                    Some("rafales") => false,
+                    _ => usage(),
+                });
             }
             "-h" | "--help" => usage(),
             "-V" | "--version" => {
@@ -2580,7 +2588,7 @@ fn main() {
         .build()
         .expect("boucle d'événements");
     // Vue de la dernière visite de ce dossier, si elle est connue (pas en mesure).
-    let view = if bench.is_none() { positions::load_view(&dir) } else { None };
+    let view = forced_view.or(if bench.is_none() { positions::load_view(&dir) } else { None });
     let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps, bench);
     if let Some(flat) = view {
         app.flat = flat;
@@ -2791,6 +2799,6 @@ mod tests {
 }
 
 fn usage() -> ! {
-    eprintln!("usage : rafale-viewer [dossier | photo.jpg] [--fps N] [--bench-scroll S] | --version");
+    eprintln!("usage : rafale-viewer [dossier | photo.jpg] [--fps N] [--vue plat|rafales] [--bench-scroll S] | --version");
     std::process::exit(2);
 }

@@ -39,6 +39,7 @@ rafale-viewer [dossier | photo.jpg] [--fps N]
 
 **Reprise :** à la réouverture d'un dossier, Rafale repart de la dernière photo vue, pour un tri fait en plusieurs fois. Ouvrir une photo précise l'emporte. La position est gardée hors du dossier des photos, dans `~/.local/state/rafale/positions` (les 200 derniers dossiers).
 - `--fps N` : cadence du défilé quand une flèche est maintenue. Elle vaut 25 images/s par défaut.
+- `--vue plat` ou `--vue rafales` : ouvre dans cette vue, au lieu de celle de la dernière visite.
 - `--bench-scroll S` : mesure du défilé. Rafale attend que la première photo soit prête, maintient → pendant S secondes, relâche, puis affiche la cadence obtenue, la régularité des images et le délai de la pleine résolution, et se ferme. Utile pour comparer deux machines ou vérifier qu'une évolution ne ralentit pas le défilé, par exemple `rafale-viewer ~/Images/2026-10-29 --bench-scroll 5 --fps 25`.
 - `--version` : affiche la version. Elle figure aussi en tête de la fenêtre « Principes ».
 

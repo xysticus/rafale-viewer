@@ -4,7 +4,7 @@ Visionneur de photos pour Linux (GNOME / Wayland), écrit en Rust, fait pour **t
 
 - **Défilé sans saut.** Touche maintenue, les photos défilent en continu, sans en sauter aucune ; si le disque ne suit pas, le défilé ralentit. Au relâchement, la pleine résolution arrive en un quart de seconde.
 - **Loupe 100 %** sous le pointeur, pour vérifier la netteté.
-- **Rafales détectées** automatiquement (numéro de vue OM System / Olympus, sinon heure de prise de vue), avec vignettes et rythme ; **vue à plat** pour les petits dossiers.
+- **Rafales détectées** automatiquement (numéro de vue OM System / Olympus, sinon heure de prise de vue), avec vignettes et rythme ; **planche-contact** de toute la séance, une vignette par séquence (rafale ou vue isolée) ; marquage et rejet des rafales elles-mêmes.
 - **Marquage interopérable** : notes, couleurs, retenue / rejet dans un `.xmp` à côté du JPEG et de son RAW, lu par darktable, digiKam, RawTherapee et Lightroom. Les photos ne sont jamais modifiées.
 - **Jugement des rafales** : chaque rafale a sa note, sa retenue ou son rejet ; on la bloque (Entrée) pour l'examiner seule, avec une grille de ses vues ; des signalements ⚠ disent ce qu'il reste à faire (rafale retenue sans photo retenue…) ; une rafale rejetée part à la corbeille d'un coup.
 - **Filtre** par note, couleur, retenue ou rejet, et par rafales retenues ou notées, puis **copie de la sélection** (JPEG, RAW ou les deux) vers le presse-papiers, à coller dans Fichiers.
