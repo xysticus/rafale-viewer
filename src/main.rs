@@ -190,6 +190,8 @@ struct App {
     flat: bool,
     /// Vue choisie au bouton : elle n'est plus changée automatiquement.
     flat_chosen: bool,
+    /// Rafales de plus de FLAT_BURST_MAX vues trouvées par l'analyse.
+    big_bursts: usize,
     /// Fichiers copiés par Ctrl+C, et compte rendu de la dernière copie.
     copy_files: CopyFiles,
     /// Logiciel de retouche retenu (identifiant de son .desktop).
@@ -303,6 +305,7 @@ impl App {
             locked_grid: Vec::new(),
             flat: true,
             flat_chosen: false,
+            big_bursts: 0,
             copy_files: CopyFiles::default(),
             editor: retouch::saved_editor(),
             copy_message: String::new(),
@@ -907,14 +910,16 @@ impl App {
             return;
         }
         if let Some(photo) = self.files[self.cur].file_name().and_then(|n| n.to_str()) {
-            positions::save(&self.dir, photo);
+            positions::save(&self.dir, photo, self.flat);
         }
         let start = positions::load(&dir).map(|photo| dir.join(photo));
+        // Vue : celle de la dernière visite, sinon la règle des rafales (add_meta).
+        let view = positions::load_view(&dir);
         self.dir = dir;
         self.filter = Filter::default();
         self.burst_filter = BurstFilter::default();
-        self.flat = true;
-        self.flat_chosen = false;
+        self.flat = view.unwrap_or(true);
+        self.flat_chosen = view.is_some();
         self.reload(start, event_loop);
     }
 
@@ -1478,9 +1483,14 @@ impl App {
             }),
         }
         self.burst_of.push(self.bursts.len() - 1);
-        // Une vraie rafale détectée : la vue par rafales s'impose (sauf choix au bouton).
-        if !self.flat_chosen && self.bursts.last().unwrap().len > FLAT_BURST_MAX {
-            self.flat = false;
+        // Vue au lancement d'un dossier jamais ouvert (étude v4, section 8) : planche,
+        // puis vue par rafales dès la deuxième rafale de plus de FLAT_BURST_MAX vues
+        // (sauf vue retenue de la dernière visite, ou choisie au bouton).
+        if self.bursts.last().unwrap().len == FLAT_BURST_MAX + 1 {
+            self.big_bursts += 1;
+            if !self.flat_chosen && self.big_bursts >= 2 {
+                self.flat = false;
+            }
         }
         self.metas[index] = Some(meta);
         let last = self.bursts.last().unwrap();
@@ -2208,7 +2218,7 @@ impl ApplicationHandler for App {
         // Reprise à cette photo à la prochaine ouverture du dossier (pas en mesure).
         if self.bench.is_none() {
             if let Some(name) = self.files[self.cur].file_name().and_then(|n| n.to_str()) {
-                positions::save(&self.dir, name);
+                positions::save(&self.dir, name, self.flat);
             }
         }
     }
@@ -2341,32 +2351,53 @@ mod positions {
         dir.to_str().filter(|s| !s.contains(['\t', '\n'])).map(str::to_owned)
     }
 
-    fn read() -> Vec<(String, String)> {
+    /// Lignes « dossier<TAB>photo[<TAB>vue] », la vue valant « plat » ou « rafales »
+    /// (absente des lignes écrites avant la v4).
+    fn read() -> Vec<(String, String, Option<bool>)> {
         let Some(text) = file().and_then(|f| std::fs::read_to_string(f).ok()) else { return Vec::new() };
         text.lines()
-            .filter_map(|l| l.split_once('\t'))
-            .map(|(d, n)| (d.to_owned(), n.to_owned()))
+            .filter_map(|l| {
+                let mut f = l.split('\t');
+                let (d, n) = (f.next()?, f.next()?);
+                let flat = match f.next() {
+                    Some("plat") => Some(true),
+                    Some("rafales") => Some(false),
+                    _ => None,
+                };
+                Some((d.to_owned(), n.to_owned(), flat))
+            })
             .collect()
     }
 
     /// Dossier ouvert le plus récemment, s'il existe encore.
     pub fn last_dir() -> Option<PathBuf> {
-        read().into_iter().map(|(d, _)| PathBuf::from(d)).next().filter(|d| d.is_dir())
+        read().into_iter().map(|(d, _, _)| PathBuf::from(d)).next().filter(|d| d.is_dir())
     }
 
     pub fn load(dir: &Path) -> Option<String> {
         let key = key(dir)?;
-        read().into_iter().find(|(d, _)| *d == key).map(|(_, n)| n)
+        read().into_iter().find(|(d, _, _)| *d == key).map(|(_, n, _)| n)
     }
 
-    pub fn save(dir: &Path, name: &str) {
+    /// Dernière vue utilisée pour ce dossier : planche (true) ou rafales (false).
+    pub fn load_view(dir: &Path) -> Option<bool> {
+        let key = key(dir)?;
+        read().into_iter().find(|(d, _, _)| *d == key).and_then(|(_, _, flat)| flat)
+    }
+
+    pub fn save(dir: &Path, name: &str, flat: bool) {
         let (Some(key), Some(file)) = (key(dir), file()) else { return };
         if name.contains(['\t', '\n']) {
             return;
         }
-        let mut lines = vec![(key.clone(), name.to_owned())];
-        lines.extend(read().into_iter().filter(|(d, _)| *d != key).take(KEEP - 1));
-        let text: String = lines.iter().map(|(d, n)| format!("{d}\t{n}\n")).collect();
+        let mut lines = vec![(key.clone(), name.to_owned(), Some(flat))];
+        lines.extend(read().into_iter().filter(|(d, _, _)| *d != key).take(KEEP - 1));
+        let view = |f: &Option<bool>| match f {
+            Some(true) => "\tplat",
+            Some(false) => "\trafales",
+            None => "",
+        };
+        let text: String = lines.iter().map(|(d, n, f)| format!("{d}\t{n}{}\n", view(f))).collect();
         let ok = file.parent().is_some_and(|p| std::fs::create_dir_all(p).is_ok())
             && std::fs::write(file.with_extension("tmp"), text).is_ok()
             && std::fs::rename(file.with_extension("tmp"), &file).is_ok();
@@ -2548,7 +2579,13 @@ fn main() {
     let event_loop = EventLoop::<()>::with_user_event()
         .build()
         .expect("boucle d'événements");
+    // Vue de la dernière visite de ce dossier, si elle est connue (pas en mesure).
+    let view = if bench.is_none() { positions::load_view(&dir) } else { None };
     let mut app = App::new(dir, files, start, event_loop.create_proxy(), fps, bench);
+    if let Some(flat) = view {
+        app.flat = flat;
+        app.flat_chosen = true;
+    }
     event_loop.run_app(&mut app).expect("boucle d'événements");
 }
 
@@ -2649,11 +2686,13 @@ mod tests {
         // Seul test à toucher à cette variable.
         unsafe { std::env::set_var("XDG_STATE_HOME", base.join("state")) };
         assert_eq!(super::positions::load(&a), None);
-        super::positions::save(&a, "P1.JPG");
-        super::positions::save(&b, "P2.JPG");
-        super::positions::save(&a, "P3.JPG");
+        super::positions::save(&a, "P1.JPG", true);
+        super::positions::save(&b, "P2.JPG", false);
+        super::positions::save(&a, "P3.JPG", false);
         assert_eq!(super::positions::load(&a).as_deref(), Some("P3.JPG"));
         assert_eq!(super::positions::load(&b).as_deref(), Some("P2.JPG"));
+        assert_eq!(super::positions::load_view(&a), Some(false), "vue de la dernière visite");
+        assert_eq!(super::positions::load_view(&b), Some(false));
         let text = std::fs::read_to_string(base.join("state/rafale/positions")).unwrap();
         assert_eq!(text.lines().count(), 2, "une ligne par dossier, la plus récente en tête : {text}");
         assert!(text.starts_with(a.canonicalize().unwrap().to_str().unwrap()));
@@ -2661,6 +2700,15 @@ mod tests {
         // Le dernier dossier a disparu : on ne le propose plus.
         std::fs::remove_dir(&a).unwrap();
         assert_eq!(super::positions::last_dir(), None);
+        // Ligne écrite avant la v4, sans vue : photo relue, vue inconnue.
+        let c = base.join("c");
+        std::fs::create_dir_all(&c).unwrap();
+        let f = base.join("state/rafale/positions");
+        let mut text = std::fs::read_to_string(&f).unwrap();
+        text.push_str(&format!("{}\tP9.JPG\n", c.canonicalize().unwrap().display()));
+        std::fs::write(&f, text).unwrap();
+        assert_eq!(super::positions::load(&c).as_deref(), Some("P9.JPG"));
+        assert_eq!(super::positions::load_view(&c), None);
     }
 
     #[test]
