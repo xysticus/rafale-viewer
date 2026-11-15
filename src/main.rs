@@ -1709,7 +1709,8 @@ impl App {
         let last_first = (total as isize - fit).max(0);
         let first = (anchor + self.list_offset).clamp(0, last_first);
         self.list_offset = first - anchor;
-        let lines = first as usize..(first + fit).min(total as isize).max(first) as usize;
+        // Une rangée de plus, coupée par la barre du bas, s'il en reste en dessous.
+        let lines = first as usize..(first + fit + 1).min(total as isize).max(first) as usize;
         let entries: Vec<Entry> = if grid {
             lines
                 .map(|r| {

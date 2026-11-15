@@ -575,6 +575,39 @@ impl Canvas {
     /// Bande de marquage sous une vignette de grille (la photo n'est jamais masquée) :
     /// à gauche la photo (★n, ✓ ou ✕, couleur), à droite la rafale qu'elle représente
     /// (cartouche ★n ✓ ou ✕, puis « ×25 »).
+    /// Largeur occupée par le marquage de la bande (photo à gauche, rafale à droite).
+    fn strip_width(font: &Font, cell: &Cell) -> f32 {
+        let s = 14.0;
+        let rating_w = |r: u8| 13.0 + text_width(font, &r.to_string(), 13.0);
+        let mut w = 0.0;
+        if let Some(b) = &cell.burst {
+            w += text_width(font, &format!("×{}", b.len), 13.0) + 6.0;
+            let m = &b.mark;
+            if m.rejected {
+                w += s + 10.0;
+            } else if m.picked || m.rating > 0 {
+                w += (if m.rating > 0 { rating_w(m.rating) } else { 0.0 })
+                    + (if m.rating > 0 && m.picked { 4.0 } else { 0.0 })
+                    + (if m.picked { s } else { 0.0 })
+                    + 10.0;
+            }
+        }
+        if cell.rejected {
+            w += s + 4.0;
+        } else {
+            if cell.rating > 0 {
+                w += rating_w(cell.rating) + 4.0;
+            }
+            if cell.picked {
+                w += s + 4.0;
+            }
+        }
+        if cell.color.is_some() {
+            w += 10.0;
+        }
+        w
+    }
+
     fn strip(&mut self, font: &Font, x: f32, y: f32, w: f32, cell: &Cell) {
         let s = 14.0;
         let mut right = x + w;
@@ -974,6 +1007,10 @@ impl Panel {
             bar_hits.push(Hit { widget: Widget::Trash, x: PADDING, y: by, w, h: BUTTON_H });
         }
 
+        // La barre du bas est mise de côté : une dernière rangée coupée peut passer
+        // dessous (on voit que la liste continue), elle est recollée par-dessus ensuite.
+        let bar_px = 4 * width as usize * (bar.max(0.0) as usize).min(height as usize);
+        let saved_bar = canvas.pixels[bar_px..].to_vec();
         let mut y = 0.0;
         if view.locked {
             // Bandeau bleu, cadenas : on voit d'un coup d'œil qu'on est dans une rafale.
@@ -1060,7 +1097,12 @@ impl Panel {
                         if cell.burst.as_ref().is_some_and(|b| b.grayed) {
                             canvas.rect(px, py, pw, ph, [18, 18, 18], 0.65);
                         }
-                        canvas.strip(&font, x, top + h + 6.0, w, cell);
+                        // Bande calée sous la photo (une photo portrait est plus étroite que
+                        // sa case), élargie de part et d'autre si le marquage n'y tient pas.
+                        let need = Canvas::strip_width(&font, cell).min(w);
+                        let sw = pw.max(need);
+                        let sx = (px - (sw - pw) / 2.0).clamp(x, x + w - sw);
+                        canvas.strip(&font, sx, py + ph + 6.0, sw, cell);
                         let cell_box = Some((x, top, tw as f32, th as f32));
                         tracks.push(Track { start: cell.first, len: cell.span, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
                         hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
@@ -1070,6 +1112,12 @@ impl Panel {
             }
         }
         self.font = Some(font);
+        canvas.pixels[bar_px..].copy_from_slice(&saved_bar);
+        hits.retain(|h| h.y < bar);
+        for h in &mut hits {
+            h.h = h.h.min(bar - h.y);
+        }
+        tracks.retain(|t| t.cell.map_or(t.y, |(_, y, _, h)| y + h) <= bar);
         ListImage { pixels: canvas.pixels, width, height: height.max(1), hits, bar_hits, tracks }
     }
 
