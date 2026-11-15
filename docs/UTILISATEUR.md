@@ -103,11 +103,11 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 
 **En bas, la barre de filtre** des photos, puis celle des rafales (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis, s'il y a des photos rejetées, le bouton de corbeille.
 
-**Tout en haut du panneau**, au-dessus des outils : **Rafales / À plat** à gauche (touche **V** ; « À plat » est grisé à partir de 300 photos), **Principes** et **Raccourcis** à droite.
+**Tout en haut du panneau**, au-dessus des outils : **Rafales / À plat** à gauche (touche **V**), **Principes** et **Raccourcis** à droite.
 
 **Vue au lancement :** À plat, sauf si Rafale détecte une rafale de plus de 5 photos ; dans ce cas, vue Rafales. Les boutons permettent toujours de changer.
 
-**Vue À plat.** Pour un dossier de moins de 300 photos, le bouton « À plat » remplace la liste des rafales par une grille : une vignette par photo, avec son marquage (étoiles ou croix de rejet en haut à gauche, couleur en haut à droite). Un cadre bleu entoure la photo affichée. Un clic sur une vignette affiche la photo. Le filtre et le marquage des photos fonctionnent comme en vue Rafales. ↑ et ↓ montent ou descendent d'une rangée. Les photos y sont isolées : le blocage, le marquage et le filtre des rafales y sont désactivés.
+**Vue À plat : la planche-contact.** Le bouton « À plat » (ou V) remplace la liste des rafales par une planche : **une vignette par séquence**, quelle que soit la taille de la séance. Une vue isolée y figure telle quelle ; une rafale y est représentée par **sa photo retenue la mieux notée**, à défaut sa photo la mieux notée, à défaut sa vue du milieu (les photos rejetées ne comptent pas ; à égalité, la première). Un cadre bleu entoure la séquence de la photo affichée. Un clic sur une vignette affiche sa photo ; **Entrée** bloque la rafale (grille de toutes ses vues), Entrée ou Échap revient à la planche. Le filtre des photos et celui des rafales s'appliquent : la photo représentante est choisie parmi celles qui passent le filtre, et une séquence sans photo visible disparaît. Marquer une photo peut changer celle qui représente sa rafale. Voir [l'étude de la v4](ETUDE-V4.md).
 
 **Principes et Raccourcis** ouvrent une fenêtre d'aide dont on peut sélectionner et copier le texte. Tant qu'elle est ouverte, comme pour les fenêtres de confirmation, la fenêtre de Rafale est voilée et ne réagit plus ; ferme l'aide pour reprendre. Si tu es allé dans une autre application, un clic sur Rafale ramène la fenêtre ouverte au premier plan.
 
@@ -137,7 +137,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 | C | Affiche ↔ masque le cadre vert de la zone AF |
 | G | Affiche ↔ masque la ligne de transition du Live GND sur la photo |
 | F ou F11 | Plein écran |
-| V | Vue par rafales ↔ vue à plat (dossiers de moins de 300 photos) |
+| V | Vue par rafales ↔ planche (vue à plat) |
 | Ctrl+O | Ouvrir un autre dossier, sans fermer la fenêtre |
 | Ctrl+Q | Quitter |
 

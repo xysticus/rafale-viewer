@@ -38,7 +38,6 @@ const FULL_DELAY: Duration = Duration::from_millis(100);
 const PREFETCH: usize = 10;
 const DEFAULT_FPS: f64 = 25.0;
 /// La vue à plat (une vignette par photo) n'est proposée qu'en dessous de ce nombre de photos.
-const FLAT_MAX: usize = 300;
 /// Vue au lancement : à plat, sauf si une rafale dépasse ce nombre de photos.
 const FLAT_BURST_MAX: usize = 5;
 
@@ -345,9 +344,9 @@ impl App {
         };
     }
 
-    /// Le filtre des rafales ne vaut qu'en vue par rafales, une fois leurs bornes connues.
+    /// Le filtre des rafales vaut une fois leurs bornes connues (vue par rafales et planche).
     fn burst_filter_on(&self) -> bool {
-        self.burst_filter.active() && !self.flat_view() && self.scanned == self.files.len()
+        self.burst_filter.active() && self.scanned == self.files.len()
     }
 
     /// Un filtre (photos ou rafales) restreint-il les images parcourues ?
@@ -540,7 +539,36 @@ impl App {
     }
 
     fn flat_view(&self) -> bool {
-        self.flat && self.files.len() < FLAT_MAX
+        self.flat
+    }
+
+    /// Photo qui représente la rafale `b` dans la planche (étude v4, section 4),
+    /// choisie parmi ses vues qui passent le filtre ; None si aucune ne le passe.
+    /// 1. la retenue la mieux notée ; 2. la mieux notée ; 3. la vue du milieu.
+    /// Rejetées exclues (toutes rejetées : la vue du milieu) ; à égalité, la première.
+    fn representative(&self, b: usize) -> Option<usize> {
+        let burst = &self.bursts[b];
+        let visible: Vec<usize> = if self.filtering() {
+            visible_in(&self.visible, burst.start, burst.len).to_vec()
+        } else {
+            burst.range().collect()
+        };
+        representative_of(&self.marks, &visible)
+    }
+
+    /// La planche : une case par séquence visible, (photo montrée, première vue,
+    /// nombre de vues), dans l'ordre ; les vues pas encore analysées, une case chacune.
+    fn planche(&self) -> Vec<(usize, usize, usize)> {
+        let mut cases: Vec<(usize, usize, usize)> = (0..self.bursts.len())
+            .filter_map(|b| self.representative(b).map(|r| (r, self.bursts[b].start, self.bursts[b].len)))
+            .collect();
+        let filtering = self.filtering();
+        cases.extend(
+            (self.scanned..self.files.len())
+                .filter(|&i| !filtering || self.visible.binary_search(&i).is_ok())
+                .map(|i| (i, i, 1)),
+        );
+        cases
     }
 
     /// Sélection : les photos qui passent le filtre s'il y en a un, sinon les retenues.
@@ -1066,12 +1094,8 @@ impl App {
         }
     }
 
-    /// V : vue par rafales ↔ à plat ; à plat seulement pour les petits dossiers.
+    /// V : vue par rafales ↔ planche (à plat).
     fn toggle_view(&mut self) {
-        if self.files.len() >= FLAT_MAX {
-            self.copy_message = format!("vue à plat : dossiers de moins de {FLAT_MAX} photos");
-            return;
-        }
         self.bar_widget(if self.flat_view() { Widget::Bursts } else { Widget::Flat });
     }
 
@@ -1372,7 +1396,7 @@ impl App {
             return;
         }
         let info = Info {
-            flat_available: self.files.len() < FLAT_MAX,
+            flat_available: true,
             flat: flat_view,
             tools: &tools,
             controls: &controls,
@@ -1461,13 +1485,13 @@ impl App {
         }
     }
 
-    /// Vue par rafales, analyse terminée (les bornes des rafales sont connues).
+    /// Analyse terminée : les bornes des rafales sont connues (vue par rafales et planche).
     fn bursts_known(&self) -> bool {
-        !self.flat_view() && self.scanned == self.files.len()
+        self.scanned == self.files.len()
     }
 
-    /// Rafale de la photo affichée, si son marquage est possible : vue par rafales,
-    /// analyse terminée, et une vraie rafale (pas une vue isolée).
+    /// Rafale de la photo affichée, si son marquage est possible : analyse terminée,
+    /// et une vraie rafale (pas une vue isolée).
     fn markable_burst(&self) -> Option<usize> {
         if !self.bursts_known() {
             return None;
@@ -1564,11 +1588,14 @@ impl App {
         let trash_burst = self.trash_burst();
         let warned: Vec<bool> = (0..self.bursts.len()).map(|b| !self.burst_issues(b).is_empty()).collect();
         let filtering = self.filtering();
-        let burst_filter = (!self.flat_view()).then(|| Controls {
+        let burst_filter = Some(Controls {
             rating: self.burst_filter.min_rating,
             check: self.burst_filter.retained,
             ..Default::default()
         });
+        // Planche : une case par séquence (calcul léger, refait à chaque mise à jour ;
+        // la liste n'est recomposée que si une case change).
+        let planche = if self.flat && self.locked.is_none() { self.planche() } else { Vec::new() };
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -1585,7 +1612,7 @@ impl App {
         // Ligne d'état en haut (pendant l'analyse, ou rafale bloquée), filtre et boutons en bas.
         let status_h = if status.is_empty() && locked.is_none() { 0.0 } else { panel::PADDING };
         let header = panel::BOTTOM_BAR + status_h;
-        let flat = self.flat && self.files.len() < FLAT_MAX;
+        let flat = self.flat;
         // Grille de photos : vue à plat, ou vues de la rafale bloquée.
         let grid = flat || locked.is_some();
         let row_h = if grid { Panel::grid_row_height(width) } else { Panel::row_height(width) };
@@ -1593,10 +1620,10 @@ impl App {
         let fit = ((height as f32 - header) / row_h).max(0.0) as isize;
         let per = panel::THUMBS_PER_ROW;
 
-        // Rafale bloquée : toutes ses vues visibles, par rangées. Vue à plat : les
-        // photos visibles, par rangées.
-        // Sinon : les rafales qui ont au moins une image visible.
-        let photos: Vec<usize> = if let Some(b) = locked {
+        // Rafale bloquée : toutes ses vues visibles, par rangées. Planche : une case par
+        // séquence. Sinon : les rafales qui ont au moins une image visible.
+        // Cases de la grille : (photo montrée, première vue couverte, nombre de vues).
+        let cases: Vec<(usize, usize, usize)> = if let Some(b) = locked {
             // Toutes ses vues visibles, une vignette chacune ; la grille défile comme
             // la vue à plat (marquer une vue demande de la voir).
             status = format!(
@@ -1605,13 +1632,13 @@ impl App {
                 members.len()
             );
             self.locked_grid = members.clone();
-            members.clone()
-        } else if !flat {
-            Vec::new()
-        } else if filtering {
-            self.visible.clone()
+            // Avec un filtre, chaque vignette tient lieu des vues masquées qui la suivent.
+            let end = self.bursts[b].range().end;
+            members.iter().enumerate().map(|(k, &i)| (i, i, members.get(k + 1).copied().unwrap_or(end) - i)).collect()
+        } else if flat {
+            planche
         } else {
-            (0..self.files.len()).collect()
+            Vec::new()
         };
         let listed: Vec<usize> = if grid {
             Vec::new()
@@ -1622,7 +1649,8 @@ impl App {
         };
         let cur_burst = self.burst_of.get(self.cur).copied();
         let (total, cur_pos) = if grid {
-            (photos.len().div_ceil(per), photos.partition_point(|&i| i < self.cur) / per)
+            let case = cases.partition_point(|&(_, first, _)| first <= self.cur).saturating_sub(1);
+            (cases.len().div_ceil(per), case / per)
         } else {
             (listed.len(), cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)))
         };
@@ -1638,17 +1666,13 @@ impl App {
         self.list_offset = first - anchor;
         let lines = first as usize..(first + fit).min(total as isize).max(first) as usize;
         let entries: Vec<Entry> = if grid {
-            // Rafale bloquée avec un filtre : chaque vignette tient lieu des vues masquées
-            // qui la suivent, et garde le cadre quand la photo affichée en est une.
-            let end = locked.map_or(0, |b| self.bursts[b].range().end);
             lines
                 .map(|r| {
-                    let cells = (r * per..((r + 1) * per).min(photos.len()))
-                        .map(|k| {
-                            let index = photos[k];
-                            let span = if locked.is_some() { photos.get(k + 1).copied().unwrap_or(end) - index } else { 1 };
+                    let cells = cases[r * per..((r + 1) * per).min(cases.len())]
+                        .iter()
+                        .map(|&(index, first, span)| {
                             let m = &self.marks[index];
-                            Cell { index, span, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
+                            Cell { index, first, span, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
                         })
                         .collect();
                     Entry::Photos(cells)
@@ -2312,6 +2336,26 @@ mod positions {
     }
 }
 
+/// Règle de la planche (étude v4, section 4) appliquée aux vues `visible` d'une
+/// séquence, dans l'ordre : la retenue la mieux notée, sinon la mieux notée, sinon
+/// la vue du milieu ; rejetées exclues (toutes rejetées : la vue du milieu) ; à
+/// égalité, la première.
+fn representative_of(marks: &[Mark], visible: &[usize]) -> Option<usize> {
+    if visible.is_empty() {
+        return None;
+    }
+    let kept: Vec<usize> = visible.iter().copied().filter(|&i| !marks[i].rejected).collect();
+    let best = |pool: Vec<usize>| pool.into_iter().max_by_key(|&i| (marks[i].rating, std::cmp::Reverse(i)));
+    if let Some(i) = best(kept.iter().copied().filter(|&i| marks[i].retained()).collect()) {
+        return Some(i);
+    }
+    if let Some(i) = best(kept.iter().copied().filter(|&i| marks[i].rating > 0).collect()) {
+        return Some(i);
+    }
+    let pool = if kept.is_empty() { visible } else { &kept[..] };
+    Some(pool[pool.len() / 2])
+}
+
 /// Images visibles (liste triée) parmi `start..start + len`.
 /// Signalement d'une rafale dans le panneau (le ⚠ de tête est dessiné), et
 /// ce qu'il faut faire pour le lever.
@@ -2586,6 +2630,28 @@ mod tests {
         };
         assert!(args("/home/a/Images/ma séance").contains(&"--filename=/home/a/Images/ma séance/".to_string()));
         assert!(!args("").iter().any(|a| a.starts_with("--filename")));
+    }
+
+    #[test]
+    fn photo_representante() {
+        use super::{representative_of as rep, Mark};
+        let m = |rating: u8, picked: bool, rejected: bool| Mark { rating, picked, rejected, ..Default::default() };
+        let all: Vec<usize> = (0..5).collect();
+        // Aucune marque : la vue du milieu.
+        assert_eq!(rep(&[Mark::default(); 5], &all), Some(2));
+        // La mieux notée, la première à égalité.
+        let marks = [m(1, false, false), m(3, false, false), m(2, false, false), m(3, false, false), m(0, false, false)];
+        assert_eq!(rep(&marks, &all), Some(1));
+        // Une retenue l'emporte sur une mieux notée non retenue.
+        let marks = [m(5, false, false), m(2, true, false), m(4, true, false), m(1, false, false), m(0, false, false)];
+        assert_eq!(rep(&marks, &all), Some(2));
+        // Rejetées exclues, même bien notées ; toutes rejetées : la vue du milieu.
+        let marks = [m(5, false, true), m(0, false, false), m(0, false, false), m(0, false, false), m(1, false, false)];
+        assert_eq!(rep(&marks, &all), Some(4));
+        assert_eq!(rep(&[m(0, false, true); 5], &all), Some(2));
+        // Filtre : choix parmi les vues visibles seulement ; aucune visible : rien.
+        assert_eq!(rep(&marks, &[1, 2, 3]), Some(2));
+        assert_eq!(rep(&marks, &[]), None);
     }
 
     #[test]

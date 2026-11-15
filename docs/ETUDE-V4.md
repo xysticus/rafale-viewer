@@ -88,7 +88,7 @@ Exigence : ne pas ralentir l'affichage.
 
 | Étape | Contenu |
 |---|---|
-| 1 | Planche : une vignette par séquence, choix de la photo représentante (section 4), filtre (section 5), plus de limite de 300 photos |
+| 1 | Planche : une vignette par séquence, choix de la photo représentante (section 4), filtre (section 5), plus de limite de 300 photos — **fait** (avec le marquage et le blocage des rafales réactivés dans la planche) |
 | 2 | Signe des séquences (pile, pastille) et marquage (photo en haut, rafale en bas à gauche, pile verte, vignette grisée) |
 | 3 | Navigation : flèches dans la planche, Page préc. / suiv. de vignette en vignette, Entrée pour la rafale bloquée et retour |
 | 4 | Vue au lancement : mémoire par dossier, règle des rafales de plus de 5 vues |

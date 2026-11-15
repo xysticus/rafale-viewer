@@ -193,9 +193,12 @@ pub struct Row {
 /// Une photo de la grille, en mode à plat.
 #[derive(Debug, PartialEq)]
 pub struct Cell {
+    /// Photo montrée (et affichée au clic).
     pub index: usize,
-    /// Photos dont la vignette tient lieu, à partir de `index` (vues espacées
-    /// d'une rafale bloquée) : le cadre s'y place quand on les parcourt.
+    /// Photos dont la vignette tient lieu, `first..first + span` : toute la séquence
+    /// dans la planche, les vues masquées qui suivent dans une rafale bloquée filtrée.
+    /// Le cadre s'y place quand on les parcourt.
+    pub first: usize,
     pub span: usize,
     pub rating: u8,
     pub rejected: bool,
@@ -973,7 +976,7 @@ impl Panel {
                         self.draw_thumb(&mut canvas, cell.index, x, top, tw, th, metas);
                         canvas.badges(x, top, tw as f32, cell);
                         let cell_box = Some((x, top, tw as f32, th as f32));
-                        tracks.push(Track { start: cell.index, len: cell.span, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
+                        tracks.push(Track { start: cell.first, len: cell.span, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
                         hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
                     }
                     y += Self::grid_row_height(width);
