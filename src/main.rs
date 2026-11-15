@@ -557,16 +557,16 @@ impl App {
     }
 
     /// La planche : une case par séquence visible, (photo montrée, première vue,
-    /// nombre de vues), dans l'ordre ; les vues pas encore analysées, une case chacune.
-    fn planche(&self) -> Vec<(usize, usize, usize)> {
-        let mut cases: Vec<(usize, usize, usize)> = (0..self.bursts.len())
-            .filter_map(|b| self.representative(b).map(|r| (r, self.bursts[b].start, self.bursts[b].len)))
+    /// nombre de vues, rafale), dans l'ordre ; les vues pas encore analysées, une case chacune.
+    fn planche(&self) -> Vec<(usize, usize, usize, Option<usize>)> {
+        let mut cases: Vec<(usize, usize, usize, Option<usize>)> = (0..self.bursts.len())
+            .filter_map(|b| self.representative(b).map(|r| (r, self.bursts[b].start, self.bursts[b].len, Some(b))))
             .collect();
         let filtering = self.filtering();
         cases.extend(
             (self.scanned..self.files.len())
                 .filter(|&i| !filtering || self.visible.binary_search(&i).is_ok())
-                .map(|i| (i, i, 1)),
+                .map(|i| (i, i, 1, None)),
         );
         cases
     }
@@ -1622,8 +1622,9 @@ impl App {
 
         // Rafale bloquée : toutes ses vues visibles, par rangées. Planche : une case par
         // séquence. Sinon : les rafales qui ont au moins une image visible.
-        // Cases de la grille : (photo montrée, première vue couverte, nombre de vues).
-        let cases: Vec<(usize, usize, usize)> = if let Some(b) = locked {
+        // Cases de la grille : (photo montrée, première vue couverte, nombre de vues,
+        // rafale représentée dans la planche).
+        let cases: Vec<(usize, usize, usize, Option<usize>)> = if let Some(b) = locked {
             // Toutes ses vues visibles, une vignette chacune ; la grille défile comme
             // la vue à plat (marquer une vue demande de la voir).
             status = format!(
@@ -1634,7 +1635,7 @@ impl App {
             self.locked_grid = members.clone();
             // Avec un filtre, chaque vignette tient lieu des vues masquées qui la suivent.
             let end = self.bursts[b].range().end;
-            members.iter().enumerate().map(|(k, &i)| (i, i, members.get(k + 1).copied().unwrap_or(end) - i)).collect()
+            members.iter().enumerate().map(|(k, &i)| (i, i, members.get(k + 1).copied().unwrap_or(end) - i, None)).collect()
         } else if flat {
             planche
         } else {
@@ -1649,7 +1650,7 @@ impl App {
         };
         let cur_burst = self.burst_of.get(self.cur).copied();
         let (total, cur_pos) = if grid {
-            let case = cases.partition_point(|&(_, first, _)| first <= self.cur).saturating_sub(1);
+            let case = cases.partition_point(|&(_, first, _, _)| first <= self.cur).saturating_sub(1);
             (cases.len().div_ceil(per), case / per)
         } else {
             (listed.len(), cur_burst.map_or(0, |b| listed.partition_point(|&i| i < b)))
@@ -1670,9 +1671,14 @@ impl App {
                 .map(|r| {
                     let cells = cases[r * per..((r + 1) * per).min(cases.len())]
                         .iter()
-                        .map(|&(index, first, span)| {
+                        .map(|&(index, first, span, burst)| {
                             let m = &self.marks[index];
-                            Cell { index, first, span, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color }
+                            // Une vraie rafale (pas une vue isolée) : pile, cartouche, nombre de vues.
+                            let burst = burst.filter(|&b| self.bursts[b].len >= 2).map(|b| {
+                                let mark = self.bursts[b].mark;
+                                panel::CellBurst { len: self.bursts[b].len, mark, grayed: mark.rejected || m.rejected }
+                            });
+                            Cell { index, first, span, rating: m.rating, rejected: m.rejected, picked: m.retained(), color: m.color, burst }
                         })
                         .collect();
                     Entry::Photos(cells)

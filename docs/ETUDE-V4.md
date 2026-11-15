@@ -22,16 +22,20 @@ En ne montrant **qu'une vignette par séquence** (une rafale ou une vue isolée)
 ## 2. Le signe d'une séquence
 
 - **Effet de pile** : deux bords décalés derrière la vignette, comme des tirages empilés. Il se repère instantanément, même en faisant défiler 80 rangées, ce qui compte avec une majorité de vues isolées.
-- **Pastille de nombre** en bas à droite : « ×25 », dans un petit cartouche sombre. Elle dit combien de vues sont derrière la vignette (de 6 à 152 le 15 novembre), utile pour décider d'entrer ou non dans la rafale.
+- **Nombre de vues** « ×25 », à droite dans la bande sous la vignette (section 3). Elle dit combien de vues sont derrière la vignette (de 6 à 152 le 15 novembre), utile pour décider d'entrer ou non dans la rafale.
 - Une vue isolée n'a ni pile ni pastille.
 - Le bleu reste réservé au cadre de la vue affichée.
 
 ## 3. Le marquage affiché
 
-- **En haut de la vignette, le marquage de la photo** qui représente la séquence, comme pour une vue isolée : étoiles ou croix de rejet en haut à gauche, coche ✓ dessous, couleur en haut à droite.
-- **En bas à gauche, le marquage de la rafale** dans un cartouche distinct, avec un contour (ses étoiles), pour ne pas le confondre avec celui de la photo (même leçon que le nombre de photos retenues dans la liste des rafales).
-- **Rafale retenue** : les bords de la pile en vert.
-- **Rafale rejetée**, ou rafale dont toutes les vues sont rejetées : vignette **grisée, pas masquée** (le rejet n'est qu'une marque).
+Décidé le 15 novembre, après essai de l'étape 1 (les marques posées sur l'image gênaient) : **le marquage passe dans une bande sous la vignette**, la photo n'est jamais masquée. Dans la planche comme dans la grille d'une rafale bloquée.
+
+- **À gauche de la bande, la photo** qui représente la séquence : note compacte « ★3 », coche ✓, pastille de couleur ; ou croix ✕ si elle est rejetée.
+- **À droite, la rafale** qu'elle représente : son marquage dans un **cartouche avec contour** (« ★2 ✓ », ou ✕), pour ne pas le confondre avec celui de la photo (même leçon que le nombre de photos retenues dans la liste des rafales), puis le nombre de vues « ×25 ».
+- Notes compactes (une étoile suivie du chiffre) : cinq étoiles en icônes ne laisseraient pas la place au marquage de la rafale sur une vignette d'environ 130 pixels.
+- **Rafale retenue** : les tirages de la pile en vert.
+- **Rafale rejetée**, ou rafale dont toutes les vues visibles sont rejetées : vignette **grisée, pas masquée** (le rejet n'est qu'une marque).
+- La pile et le grisé sont calés sur la photo elle-même (plus étroite en portrait), pas sur la case.
 
 ## 4. La photo qui représente une séquence
 
@@ -89,7 +93,7 @@ Exigence : ne pas ralentir l'affichage.
 | Étape | Contenu |
 |---|---|
 | 1 | Planche : une vignette par séquence, choix de la photo représentante (section 4), filtre (section 5), plus de limite de 300 photos — **fait** (avec le marquage et le blocage des rafales réactivés dans la planche) |
-| 2 | Signe des séquences (pile, pastille) et marquage (photo en haut, rafale en bas à gauche, pile verte, vignette grisée) |
+| 2 | Signe des séquences (pile, « ×25 ») et marquage dans une bande sous la vignette (photo à gauche, cartouche de la rafale à droite), pile verte, vignette grisée — **fait** |
 | 3 | Navigation : flèches dans la planche, Page préc. / suiv. de vignette en vignette, Entrée pour la rafale bloquée et retour |
 | 4 | Vue au lancement : mémoire par dossier, règle des rafales de plus de 5 vues |
 | 5 | Mesures, aide, guide, conception et README à jour ; version 4.0.0 |

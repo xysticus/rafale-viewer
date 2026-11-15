@@ -52,7 +52,10 @@ Un clic sur une ligne va au début de la rafale.
 • Vue « À plat » : une planche-contact de la séance, une vignette par séquence. Une \
 vue isolée y figure telle quelle ; une rafale y est représentée par sa photo retenue \
 la mieux notée, à défaut sa photo la mieux notée, à défaut sa vue du milieu (les \
-rejetées ne comptent pas). Boutons « Rafales » et « À plat » tout en haut du panneau, \
+rejetées ne comptent pas). Une rafale a une pile derrière sa photo (verte si la \
+rafale est retenue, photo grisée si elle est rejetée). Sous chaque vignette : à \
+gauche le marquage de la photo, à droite celui de la rafale, encadré, et son \
+nombre de vues (×25). Boutons « Rafales » et « À plat » tout en haut du panneau, \
 ou touche V, pour toutes les séances. Un clic va à la photo ; Entrée bloque la \
 rafale (grille de toutes ses vues), Entrée ou Échap revient à la planche. Le filtre \
 des photos et celui des rafales s'appliquent : une séquence sans photo visible \

@@ -205,7 +205,24 @@ pub struct Cell {
     /// Retenue (✓).
     pub picked: bool,
     pub color: Option<Color>,
+    /// Rafale représentée par cette vignette, dans la planche (None : vue isolée,
+    /// ou vue d'une rafale bloquée).
+    pub burst: Option<CellBurst>,
 }
+
+/// Rafale représentée par une vignette de la planche.
+#[derive(Debug, PartialEq)]
+pub struct CellBurst {
+    /// Nombre de vues de la rafale.
+    pub len: usize,
+    pub mark: BurstMark,
+    /// Rafale rejetée, ou toutes ses vues visibles rejetées : vignette grisée.
+    pub grayed: bool,
+}
+
+/// Bande sous chaque vignette de grille (marquage), et décalage des tirages de la pile.
+const STRIP_H: f32 = 18.0;
+const PILE: f32 = 3.0;
 
 /// Une ligne de la liste : une rafale, ou une rangée de photos (mode à plat).
 #[derive(Debug, PartialEq)]
@@ -539,28 +556,78 @@ impl Canvas {
         w
     }
 
-    /// Marquage d'une vignette de la grille : étoiles ou rejet à gauche, couleur à droite.
-    fn badges(&mut self, x: f32, y: f32, w: f32, cell: &Cell) {
-        if cell.rejected {
-            let s = 16.0;
-            let (x, y) = (x + 3.0, y + 3.0);
-            self.rect(x, y, s, s, REJECT_ON, 1.0);
-            let (a, b) = (s * 0.28, s * 0.72);
-            self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.0, [255, 255, 255]);
-            self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.0, [255, 255, 255]);
-        } else if cell.rating > 0 {
-            let n = cell.rating as f32;
-            self.rect(x + 3.0, y + 3.0, 4.0 + 12.0 * n, 16.0, [0, 0, 0], 0.55);
-            for k in 0..cell.rating {
-                self.star(x + 5.0 + 12.0 * k as f32, y + 5.0, 12.0, STAR_ON);
+    /// Croix de rejet dans le carré (x, y, s).
+    fn reject_mark(&mut self, x: f32, y: f32, s: f32) {
+        self.rect(x, y, s, s, REJECT_ON, 1.0);
+        let (a, b) = (s * 0.28, s * 0.72);
+        self.polyline(&[(x + a, y + a), (x + b, y + b)], 2.0, [255, 255, 255]);
+        self.polyline(&[(x + b, y + a), (x + a, y + b)], 2.0, [255, 255, 255]);
+    }
+
+    /// Note compacte « ★3 » à partir de x ; renvoie l'abscisse de fin.
+    fn compact_rating(&mut self, font: &Font, x: f32, y: f32, rating: u8) -> f32 {
+        self.star(x, y + 1.0, 12.0, STAR_ON);
+        let n = rating.to_string();
+        self.text(font, x + 13.0, y + 12.0, x + 30.0, &n, 13.0, STAR_ON);
+        x + 13.0 + text_width(font, &n, 13.0)
+    }
+
+    /// Bande de marquage sous une vignette de grille (la photo n'est jamais masquée) :
+    /// à gauche la photo (★n, ✓ ou ✕, couleur), à droite la rafale qu'elle représente
+    /// (cartouche ★n ✓ ou ✕, puis « ×25 »).
+    fn strip(&mut self, font: &Font, x: f32, y: f32, w: f32, cell: &Cell) {
+        let s = 14.0;
+        let mut right = x + w;
+        if let Some(b) = &cell.burst {
+            let count = format!("×{}", b.len);
+            let cw = text_width(font, &count, 13.0);
+            self.text(font, right - cw, y + 12.0, right, &count, 13.0, [150, 150, 150]);
+            right -= cw + 6.0;
+            let m = &b.mark;
+            if m.rejected || m.picked || m.rating > 0 {
+                // Cartouche avec contour : le marquage de la rafale, distinct de celui de la photo.
+                let inner = if m.rejected {
+                    s
+                } else {
+                    (if m.rating > 0 { 13.0 + text_width(font, &m.rating.to_string(), 13.0) } else { 0.0 })
+                        + (if m.rating > 0 && m.picked { 4.0 } else { 0.0 })
+                        + (if m.picked { s } else { 0.0 })
+                };
+                let left = right - inner - 6.0;
+                for (rx, ry, rw, rh) in [(left, y - 2.0, inner + 6.0, 1.0), (left, y + s + 1.0, inner + 6.0, 1.0), (left, y - 2.0, 1.0, s + 4.0), (left + inner + 5.0, y - 2.0, 1.0, s + 4.0)] {
+                    self.rect(rx, ry, rw, rh, [255, 255, 255], 0.35);
+                }
+                let mut cx = left + 3.0;
+                if m.rejected {
+                    self.reject_mark(cx, y, s);
+                } else {
+                    if m.rating > 0 {
+                        cx = self.compact_rating(font, cx, y, m.rating) + 4.0;
+                    }
+                    if m.picked {
+                        self.check(cx, y, s);
+                    }
+                }
+                right = left - 4.0;
             }
         }
-        if cell.picked && !cell.rejected {
-            self.check(x + 3.0, y + 22.0, 16.0);
+        let mut cx = x;
+        if cell.rejected {
+            self.reject_mark(cx, y, s);
+            cx += s + 4.0;
+        } else {
+            if cell.rating > 0 {
+                cx = self.compact_rating(font, cx, y, cell.rating) + 4.0;
+            }
+            if cell.picked {
+                self.check(cx, y, s);
+                cx += s + 4.0;
+            }
         }
         if let Some(c) = cell.color {
-            self.rect(x + w - 17.0, y + 3.0, 14.0, 14.0, [0, 0, 0], 0.55);
-            self.rect(x + w - 15.0, y + 5.0, 10.0, 10.0, c.rgb(), 1.0);
+            if cx + 10.0 <= right {
+                self.rect(cx, y + 2.0, 10.0, 10.0, c.rgb(), 1.0);
+            }
         }
     }
 
@@ -809,7 +876,7 @@ impl Panel {
     /// Hauteur d'une rangée de la grille (mode à plat).
     pub fn grid_row_height(width: u32) -> f32 {
         let (_, th) = thumb_size(width);
-        th as f32 + THUMB_GAP + 8.0
+        th as f32 + THUMB_GAP + 8.0 + 2.0 * PILE + STRIP_H
     }
 
     /// Rend les lignes `entries` (déjà choisies pour tenir dans `height`), puis
@@ -971,10 +1038,27 @@ impl Panel {
                 Entry::Photos(cells) => {
                     for (k, cell) in cells.iter().enumerate() {
                         let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);
-                        // Marge pour le cadre de la vignette active.
-                        let top = top + 4.0;
+                        // Marges pour la pile (au-dessus) et le cadre de la vignette active.
+                        let top = top + 4.0 + 2.0 * PILE;
+                        let (w, h) = (tw as f32, th as f32);
+                        // Rectangle réel de la photo dans sa case (une photo portrait est plus étroite).
+                        let (px, py, pw, ph) = match self.thumb(cell.index, tw, th, metas) {
+                            Some(t) => (x + ((tw - t.width as u32) / 2) as f32, top + ((th - t.height as u32) / 2) as f32, t.width as f32, t.height as f32),
+                            None => (x, top, w, h),
+                        };
+                        if let Some(b) = &cell.burst {
+                            // Pile : deux tirages décalés derrière la photo, verts si la
+                            // rafale est retenue.
+                            let edge = if b.mark.retained() { CHECK_ON } else { [95, 95, 95] };
+                            canvas.rect(px + 2.0 * PILE, py - 2.0 * PILE, pw, ph, edge, 0.55);
+                            canvas.rect(px + PILE, py - PILE, pw, ph, edge, 0.85);
+                            canvas.rect(px, py, pw, ph, [20, 20, 20], 1.0);
+                        }
                         self.draw_thumb(&mut canvas, cell.index, x, top, tw, th, metas);
-                        canvas.badges(x, top, tw as f32, cell);
+                        if cell.burst.as_ref().is_some_and(|b| b.grayed) {
+                            canvas.rect(px, py, pw, ph, [18, 18, 18], 0.65);
+                        }
+                        canvas.strip(&font, x, top + h + 6.0, w, cell);
                         let cell_box = Some((x, top, tw as f32, th as f32));
                         tracks.push(Track { start: cell.first, len: cell.span, x, y: top + th as f32 + 3.0, span: tw as f32, cell: cell_box });
                         hits.push(Hit { widget: Widget::Photo(cell.index), x, y: top, w: tw as f32, h: th as f32 });
