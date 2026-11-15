@@ -99,7 +99,7 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 - la netteté AF, pour une vue de rafale dont la zone AF est connue (l'état de la loupe se lit sur les boutons du haut) ;
 - en orange, si la rafale ne respecte pas une règle de cohérence, ce qui ne va pas et quoi faire (voir « Juger les rafales »).
 
-**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, puis à droite le marquage de la rafale (étoiles et ✓, ou ✕), un ⚠ si elle est signalée, et « ✓ n » s'il y a des photos retenues. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
+**La liste des rafales :** chaque ligne indique le numéro, l'heure, le nombre d'images, le rythme quand il est connu, et en vert le nombre de photos retenues (« 3 retenues ») ; à droite, seulement le marquage de la rafale elle-même (étoiles et ✓, ou ✕) et un ⚠ si elle est signalée. Elle montre 4 vignettes réparties sur la rafale. La rafale courante est surlignée, et un petit trait bleu sous ses vignettes montre où tu en es.
 
 **En bas, la barre de filtre** des photos, puis celle des rafales (voir « Souris »), puis la ligne de copie (voir « Copier la sélection »), puis, s'il y a des photos rejetées, le bouton de corbeille.
 
@@ -174,7 +174,7 @@ Le marquage est enregistré dans un petit fichier à côté de chaque photo marq
 
 - **Les étoiles (1 à 5) notent la qualité**, et rien ne les change à ta place : tu peux toujours revoir plus tard toutes tes bonnes photos avec le filtre étoiles.
 - **La retenue (✓, touche Espace ou case ✓) veut dire « je la retouche ».** Dans une rafale où dix photos sont également bonnes, les dix gardent leurs 3 étoiles et une seule reçoit ✓.
-- Le filtre ✓, la copie sans filtre (Ctrl+C), « Retoucher » et le compte « ✓ n » des rafales ne prennent que les photos cochées. Espace coche ou décoche sans toucher aux étoiles ; rejeter (X) enlève la coche.
+- Le filtre ✓, la copie sans filtre (Ctrl+C), « Retoucher » et le nombre de photos retenues de chaque rafale ne prennent que les photos cochées. Espace coche ou décoche sans toucher aux étoiles ; rejeter (X) enlève la coche.
 - Les autres logiciels n'ont pas besoin de connaître la coche : « Retoucher » ne leur donne que les photos cochées, avec leurs étoiles. digiKam l'affiche comme « acceptée ».
 - **Séances triées avant cette version :** leurs photos n'ont aucune coche (les étoiles sont conservées).
 

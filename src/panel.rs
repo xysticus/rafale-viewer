@@ -935,19 +935,24 @@ impl Panel {
                         None => format!("Vue isolée   {clock}"),
                     };
                     let color = if row.current { [235, 235, 235] } else { [160, 160, 160] };
-                    // À droite : marquage de la rafale, puis nombre de photos retenues.
-                    let count_x = width as f32 - PADDING - 40.0;
-                    let mut badges = canvas.burst_badges(count_x - 10.0, top + 5.0, &row.mark);
+                    // À droite : seulement le marquage de la rafale elle-même. Le nombre
+                    // de photos retenues est écrit en toutes lettres dans le texte, pour
+                    // ne pas confondre sa coche avec celle de la rafale retenue.
+                    let mut badges = canvas.burst_badges(width as f32 - PADDING, top + 5.0, &row.mark);
                     if row.warn {
                         badges -= 20.0;
                         canvas.warning(badges, top + 4.0, 16.0);
                     }
-                    canvas.text(&font, PADDING, top + 18.0, badges - 8.0, &header, 15.0, color);
+                    let text_max = badges - 8.0;
+                    canvas.text(&font, PADDING, top + 18.0, text_max, &header, 15.0, color);
                     if row.marked > 0 {
-                        // Coche dessinée : nombre de photos retenues dans la rafale.
-                        let x = count_x;
-                        canvas.check(x, top + 5.0, 14.0);
-                        canvas.text(&font, x + 18.0, top + 18.0, max_x, &row.marked.to_string(), 15.0, MARKED);
+                        let picked = format!(
+                            "   ·   {} retenue{}",
+                            row.marked,
+                            if row.marked > 1 { "s" } else { "" }
+                        );
+                        let x = PADDING + text_width(&font, &header, 15.0);
+                        canvas.text(&font, x, top + 18.0, text_max, &picked, 15.0, MARKED);
                     }
                     for (k, &index) in row.picks.iter().enumerate() {
                         let x = PADDING + k as f32 * (tw as f32 + THUMB_GAP);

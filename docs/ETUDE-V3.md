@@ -33,7 +33,7 @@ Une rafale a son propre marquage, indépendant de celui de ses photos :
 
 - Le marquage de la rafale s'applique à la rafale de la photo affichée, bloquée ou non.
 - **Le rejet d'une rafale est une marque, comme pour une photo** : il ne masque rien et ne touche pas aux photos ; Maj+X à nouveau la réintègre.
-- La liste des rafales affiche le marquage de chaque rafale (étoiles, ✓, ✕) en plus du compte « ✓ n » des photos retenues, et ⚠ si une règle n'est pas respectée.
+- La liste des rafales affiche le marquage de chaque rafale (étoiles, ✓, ✕) en plus du nombre de photos retenues, écrit en toutes lettres dans le texte de la ligne (« 3 retenues ») pour ne pas confondre sa coche avec celle de la rafale retenue, et ⚠ si une règle n'est pas respectée.
 
 ### Rangement : un fichier par rafale
 
