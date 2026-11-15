@@ -6,6 +6,8 @@ Idées retenues pour plus tard, pas encore étudiées en détail. Chacune passer
 
 *Noté le 8 novembre 2026, piste pour la v4.*
 
+**Étudiée le 15 novembre 2026 : voir [ETUDE-V4.md](ETUDE-V4.md)**, qui tranche les points ci-dessous (certains choix diffèrent de ce qui était proposé ici).
+
 **Le besoin.** La vue à plat n'est proposée qu'en dessous de 300 photos : au-delà, une vignette par photo donne une grille trop longue. En ne montrant qu'une vignette par séquence (rafale), elle devient une planche-contact de la séance, possible quelle que soit sa taille : 115 vignettes au lieu de 2 355 pour la séance du 29/10 (112 rafales, 3 vues isolées). Elle complète la vue par rafales : la liste montre la structure (4 vignettes par rafale, heure, rythme), la planche le meilleur de chaque séquence d'un coup d'œil.
 
 **La règle.** Une vue isolée garde sa vignette. Une rafale est représentée par une seule vue, signalée comme une séquence ; le choix de cette vue :
