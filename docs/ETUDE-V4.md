@@ -94,7 +94,7 @@ Exigence : ne pas ralentir l'affichage.
 |---|---|
 | 1 | Planche : une vignette par séquence, choix de la photo représentante (section 4), filtre (section 5), plus de limite de 300 photos — **fait** (avec le marquage et le blocage des rafales réactivés dans la planche) |
 | 2 | Signe des séquences (pile, « ×25 ») et marquage dans une bande sous la vignette (photo à gauche, cartouche de la rafale à droite), pile verte, vignette grisée — **fait** |
-| 3 | Navigation : flèches dans la planche, Page préc. / suiv. de vignette en vignette, Entrée pour la rafale bloquée et retour |
+| 3 | Navigation : flèches dans la planche, Page préc. / suiv. de vignette en vignette, Entrée pour la rafale bloquée et retour — **fait** (préchargement des vignettes voisines ; vers le bas, la dernière vignette s'il n'y en a pas juste en dessous) |
 | 4 | Vue au lancement : mémoire par dossier, règle des rafales de plus de 5 vues |
 | 5 | Mesures, aide, guide, conception et README à jour ; version 4.0.0 |
 

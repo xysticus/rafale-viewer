@@ -456,6 +456,16 @@ impl App {
             }
             KeyCode::ArrowUp if pressed => self.vertical_step(-1, now),
             KeyCode::ArrowDown if pressed => self.vertical_step(1, now),
+            KeyCode::Home if pressed && self.in_planche() => {
+                if let Some(c) = self.planche().first() {
+                    self.jump(c.0, now);
+                }
+            }
+            KeyCode::End if pressed && self.in_planche() => {
+                if let Some(c) = self.planche().last() {
+                    self.jump(c.0, now);
+                }
+            }
             KeyCode::Home if pressed => {
                 let r = self.nav_range();
                 if let Some(i) = self.first_visible_in(r.start, r.len()) {
@@ -528,9 +538,16 @@ impl App {
             if let Some(&i) = target.and_then(|t| grid.get(t)) {
                 self.jump(i, now);
             }
-        } else if self.flat_view() {
+        } else if self.in_planche() {
+            // Planche : rangée du dessus ou du dessous ; vers le bas, la dernière
+            // vignette s'il n'y en a pas juste en dessous.
+            let cases = self.planche();
             let per = panel::THUMBS_PER_ROW;
-            if let Some(i) = (1..=per).rev().find_map(|k| self.neighbor(self.cur, dir, k)) {
+            let target = planche_target(&cases, self.cur, dir, per).or_else(|| {
+                let pos = cases.partition_point(|c| c.1 <= self.cur).checked_sub(1)?;
+                (dir > 0 && pos / per < (cases.len() - 1) / per).then(|| cases[cases.len() - 1].0)
+            });
+            if let Some(i) = target {
                 self.jump(i, now);
             }
         } else {
@@ -540,6 +557,12 @@ impl App {
 
     fn flat_view(&self) -> bool {
         self.flat
+    }
+
+    /// Planche active : vue à plat, pas de rafale bloquée. On y navigue de vignette
+    /// en vignette (étude v4, section 6).
+    fn in_planche(&self) -> bool {
+        self.flat && self.locked.is_none()
     }
 
     /// Photo qui représente la rafale `b` dans la planche (étude v4, section 4),
@@ -969,7 +992,12 @@ impl App {
         } else {
             return;
         };
-        let Some(target) = self.neighbor(self.cur, dir, 1) else {
+        let target = if self.in_planche() {
+            planche_target(&self.planche(), self.cur, dir, 1)
+        } else {
+            self.neighbor(self.cur, dir, 1)
+        };
+        let Some(target) = target else {
             self.pending = 0;
             return;
         };
@@ -1011,21 +1039,27 @@ impl App {
                 jobs.push(Job { index, quality });
             }
         };
-        // Voisines au sens du filtre : on ne précharge que ce qui sera affiché.
+        // Voisines au sens du filtre (dans la planche : les vignettes voisines) ; on ne
+        // précharge que ce qui sera affiché.
+        let cases = self.in_planche().then(|| self.planche());
+        let next = |from: usize, dir: isize, k: usize| match &cases {
+            Some(c) => planche_target(c, from, dir, k),
+            None => self.neighbor(from, dir, k),
+        };
         let (cur, h) = (self.cur, self.heading);
         want(Some(cur), Quality::Reduced);
         if stationary {
             want(Some(cur), Quality::Full);
         }
         for k in 1..=PREFETCH {
-            want(self.neighbor(cur, h, k), Quality::Reduced);
+            want(next(cur, h, k), Quality::Reduced);
         }
         for k in 1..=PREFETCH {
-            want(self.neighbor(cur, -h, k), Quality::Reduced);
+            want(next(cur, -h, k), Quality::Reduced);
         }
         if stationary {
-            want(self.neighbor(cur, h, 1), Quality::Full);
-            want(self.neighbor(cur, -h, 1), Quality::Full);
+            want(next(cur, h, 1), Quality::Full);
+            want(next(cur, -h, 1), Quality::Full);
             // En dernier : netteté de la photo affichée, puis des autres vues de
             // la rafale, des plus proches aux plus lointaines.
             if let Some(&b) = self.burst_of.get(cur) {
@@ -2342,6 +2376,18 @@ mod positions {
     }
 }
 
+/// Photo représentante de la `k`-ième vignette après (`dir` = 1) ou avant (`dir` = -1)
+/// celle de la photo `from`, dans les cases de la planche (photo, première vue, nombre
+/// de vues, rafale). Si `from` est hors de toute case (masquée par le filtre), on part
+/// de l'intervalle où elle se trouve.
+fn planche_target(cases: &[(usize, usize, usize, Option<usize>)], from: usize, dir: isize, k: usize) -> Option<usize> {
+    let pos = cases.partition_point(|c| c.1 <= from);
+    let inside = pos > 0 && from < cases[pos - 1].1 + cases[pos - 1].2;
+    let base = if inside || dir > 0 { pos as isize - 1 } else { pos as isize };
+    let t = base + dir * k as isize;
+    usize::try_from(t).ok().and_then(|t| cases.get(t)).map(|c| c.0)
+}
+
 /// Règle de la planche (étude v4, section 4) appliquée aux vues `visible` d'une
 /// séquence, dans l'ordre : la retenue la mieux notée, sinon la mieux notée, sinon
 /// la vue du milieu ; rejetées exclues (toutes rejetées : la vue du milieu) ; à
@@ -2636,6 +2682,23 @@ mod tests {
         };
         assert!(args("/home/a/Images/ma séance").contains(&"--filename=/home/a/Images/ma séance/".to_string()));
         assert!(!args("").iter().any(|a| a.starts_with("--filename")));
+    }
+
+    #[test]
+    fn navigation_dans_la_planche() {
+        use super::planche_target as t;
+        // Trois cases : rafale 0..10 représentée par 4, vue isolée 10, rafale 11..20 par 15.
+        let cases = [(4, 0, 10, Some(0)), (10, 10, 1, None), (15, 11, 9, Some(2))];
+        assert_eq!(t(&cases, 7, 1, 1), Some(10), "depuis l'intérieur d'une rafale : vignette suivante");
+        assert_eq!(t(&cases, 7, -1, 1), None, "pas de vignette avant la première");
+        assert_eq!(t(&cases, 10, 1, 1), Some(15));
+        assert_eq!(t(&cases, 19, -1, 1), Some(10));
+        assert_eq!(t(&cases, 2, 1, 2), Some(15), "deux vignettes plus loin");
+        assert_eq!(t(&cases, 15, 1, 1), None, "pas de vignette après la dernière");
+        // Photo masquée par le filtre, entre deux cases.
+        let trous = [(2, 0, 3, Some(0)), (12, 10, 5, Some(1))];
+        assert_eq!(t(&trous, 6, 1, 1), Some(12));
+        assert_eq!(t(&trous, 6, -1, 1), Some(2));
     }
 
     #[test]

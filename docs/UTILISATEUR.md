@@ -117,9 +117,10 @@ Le panneau de droite occupe la place que laisse une photo 4:3. Il comprend trois
 |---|---|
 | → ou Page Suiv. | Photo suivante. Maintenue : défilé continu. |
 | ← ou Page Préc. | Photo précédente. Maintenue : défilé continu en arrière. |
-| ↓ | Début de la rafale suivante (vue À plat : rangée suivante) |
-| ↑ | Début de la rafale précédente (vue À plat : rangée précédente) |
+| ↓ | Début de la rafale suivante (rafale bloquée : rangée suivante de sa grille) |
+| ↑ | Début de la rafale précédente (rafale bloquée : rangée précédente) |
 | Début / Fin | Première / dernière photo (rafale bloquée : de la rafale) |
+| Planche (vue À plat) | ← → et Page Préc. / Suiv. : vignette précédente / suivante, sans entrer dans les rafales ; ↑ ↓ : rangée du dessus / du dessous ; Début / Fin : première / dernière vignette ; Entrée : entrer dans la rafale (rafale bloquée), Entrée ou Échap pour revenir |
 | Entrée | Bloque ↔ débloque la rafale de la photo affichée |
 | Échap | Débloque la rafale ; sinon, quitte le plein écran |
 | Espace | Retenue ✓ ↔ non retenue (les étoiles ne changent pas) |

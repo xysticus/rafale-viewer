@@ -173,6 +173,9 @@ DÉFILÉ
 ↓ / ↑ : rafale suivante / précédente (vue À plat, ou rafale bloquée : rangée suivante
 / précédente de la grille)
 Début / Fin : première / dernière photo (rafale bloquée : de la rafale)
+Planche (vue À plat) : ← → et Page préc. / suiv. vont de vignette en vignette
+(sans entrer dans les rafales), ↑ ↓ de rangée en rangée, Début / Fin à la première
+et à la dernière vignette ; Entrée entre dans la rafale (rafale bloquée)
 
 RAFALE BLOQUÉE
 
