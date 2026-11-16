@@ -1312,6 +1312,10 @@ impl App {
                         format!("Netteté AF : {pct} % · rang {rank} / {total}{progress}"),
                         if rank == 1 { [110, 210, 120] } else { [175, 175, 175] },
                     ),
+                    // Vue sans zone AF enregistrée (en-tête lu) : elle ne sera jamais mesurée.
+                    None if self.metas[self.cur].as_ref().is_some_and(|m| m.af.is_none()) => {
+                        ("Netteté AF : pas de zone AF".to_string(), [150, 150, 150])
+                    }
                     None if self.sharp_done[self.cur] => ("Netteté AF : non mesurable".to_string(), [150, 150, 150]),
                     None => (format!("Netteté AF : mesure…{progress}"), [150, 150, 150]),
                 }
