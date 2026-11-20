@@ -22,3 +22,8 @@ winit = "0.30.13"
 # Les dépendances (décodeur JPEG notamment) restent optimisées en mode debug.
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+# Sans table des symboles : binaire plus petit, et sans les chemins des
+# fichiers assembleur de libjpeg-turbo.
+strip = true
